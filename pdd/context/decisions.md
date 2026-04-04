@@ -44,11 +44,11 @@
 
 ---
 
-## Decision: Sandboxed container execution for agents
-**Date**: 2026-04-04
-**What was decided**: Each agent executes in an isolated, sandboxed container. No host access, no cross-agent contamination.
-**Why**: Agents generate and execute code. Running untrusted AI-generated code on the host is a security risk. Sandboxed containers limit blast radius — a rogue Shipwright can't access the database, the filesystem, or other agents. This is also the foundation for per-agent resource limits and audit trails.
-**Don't suggest**: Running agents in the main process, shared execution environments, trusting AI-generated code without sandboxing
+## Decision: Swappable Execution Service with gVisor containers (v1)
+**Date**: 2026-04-04 (updated)
+**What was decided**: Agent code execution goes through an `ExecutionService` with a clean `ExecutionBackend` interface. The v1 backend uses Docker containers with gVisor (runsc) runtime for kernel-level syscall filtering. Per-user container isolation. The backend is swappable — future implementations (Firecracker, Wasm, subprocess) plug in via config without changing calling code.
+**Why**: Agents generate and execute untrusted code. gVisor provides strong isolation (syscall interception) without the overhead of full VMs. The clean interface boundary means we can upgrade the isolation strategy later without touching crew agent code or the Execution Service API. Per-user containers prevent cross-user contamination.
+**Don't suggest**: Running agents in the main process, subprocess-only isolation (insufficient for untrusted code), hardcoding the sandbox implementation without a swappable interface
 
 ---
 
