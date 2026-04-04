@@ -3,12 +3,59 @@
 **Last updated**: 2026-04-04
 
 ## What we're building
-A multi-agent orchestration platform that lets users design, execute, and monitor AI agent workflows through a visual interface. Think of it as a control plane for composing and running multi-agent pipelines.
+A web-based multi-agent orchestration platform where a crew of persona-based AI agents voyage together through a structured pipeline to build, test, and deploy software solutions. Themed after One Piece — the crew, the voyage, and the platform vocabulary are all drawn from that world.
+
+Users chart a course (submit a task). The crew decomposes, plans, tests, builds, validates, and deploys — autonomously, but always under the user's authority as fleet admiral.
+
+PDD and TDD aren't optional flags — they're the Log Pose. Without them, the crew doesn't sail.
 
 ## Who it's for
-- Developers and teams building AI-powered applications who need to orchestrate multiple agents
-- ML/AI engineers who want visual workflow management with per-workflow LLM configuration
-- Organizations that need observable, scalable agent execution infrastructure
+- Developers and teams who want an AI crew that follows a disciplined engineering pipeline (PDD → TDD → Implement → Review → Deploy)
+- Engineers who need observable, interventable multi-agent execution with real-time visibility
+- Organizations that want provider-agnostic AI orchestration with failover and state preservation
+
+## The Crew (Agent Personas)
+
+| Agent | Role | Responsibility |
+|---|---|---|
+| **Captain** | Project Manager | Decomposes user tasks into a voyage plan. Assigns work to crew. Manages priorities and sequencing. |
+| **Navigator** | Architect | Drafts the Poneglyphs (PDD prompt artifacts) — the encoded instructions that guide every step. Makes technical design decisions. |
+| **Shipwrights** | Developers | Build the actual code. Follow Poneglyphs precisely. Work on per-agent git branches. |
+| **Doctor** | QA Engineer | Writes health checks (tests) BEFORE any code is written (TDD). Validates after Shipwrights build. |
+| **Helmsman** | DevOps Engineer | Handles deployment across three tiers. Manages containers, pipelines, and infrastructure. |
+
+## The Voyage Pipeline
+Every task flows through this structured pipeline — no shortcuts:
+
+```
+Chart Course → Captain Plans → Navigator Writes Poneglyphs (PDD)
+  → Doctor Writes Health Checks (TDD) → Shipwrights Build
+  → Doctor Validates → Helmsman Deploys
+```
+
+## Observation Deck (Real-time War Room UI)
+The dashboard where users watch the voyage unfold. Three views:
+
+| View | Name | What it shows |
+|---|---|---|
+| **Sea Chart** | Board View | Tasks flowing through waters: PDD → TDD → Implement → Review → Deployed |
+| **Crew Map** | Graph View | Live DAG showing agents communicating via Den Den Mushi (message bus) |
+| **Ship's Log** | Timeline View | Chronological record of every agent action, filterable by crew member |
+
+Users can intervene at any point — pause an agent, redirect work, inject context — like a fleet admiral overseeing the voyage.
+
+## One Piece Vocabulary Map
+
+| Platform concept | One Piece term | Description |
+|---|---|---|
+| PDD prompt artifacts | **Poneglyphs** | Encoded instructions that guide every step |
+| PDD + TDD methodology | **Log Pose** | The navigation system — without it, the crew doesn't sail |
+| LLM gateway | **Dial System** | Routes calls across providers with config-driven role mapping |
+| State checkpoints | **Vivre Cards** | Snapshots of agent state for failover — no work is lost |
+| Message bus | **Den Den Mushi** | Inter-agent communication system (Redis Streams) |
+| Dashboard | **Observation Deck** | Real-time war room UI |
+| Task submission | **Chart a Course** | User submits a task to the crew |
+| Implementation plan | **Voyage Plan** | Captain's decomposed task plan |
 
 ## Tech stack
 - **Language**: TypeScript (frontend), Python (backend)
@@ -17,68 +64,78 @@ A multi-agent orchestration platform that lets users design, execute, and monito
 - **Animations**: Framer Motion (landing page), Three.js / React Three Fiber (optional 3D visuals)
 - **Backend**: Python, FastAPI (async)
 - **AI/Agent framework**: LangGraph (multi-agent orchestration)
-- **LLM providers**: Multi-provider (OpenAI, Anthropic, local models) — per-workflow config
-- **Database**: PostgreSQL (JSONB for agent metadata)
+- **LLM providers**: Multi-provider (Anthropic, OpenAI, local models) — config-driven role mapping via Dial System
+- **Database**: PostgreSQL (JSONB for agent metadata, Vivre Card state)
 - **ORM**: SQLAlchemy + Alembic (migrations)
-- **Cache/Queue**: Redis (job queues via Celery, caching, pub/sub for real-time status)
-- **Deployment**: Docker Compose (local dev), Kubernetes (production), Helm charts
+- **Message bus**: Redis Streams (Den Den Mushi — inter-agent communication, real-time events)
+- **Deployment**: Docker Compose (local dev, local-first), Kubernetes + Helm (production)
 - **CI/CD**: GitHub Actions
 - **Docs**: Auto-generated under `docs/`, hosted on GitHub Pages
 
 ## Framework & rendering
 - Framework: Next.js 14+ (App Router)
-- Rendering strategy: Hybrid — SSG for public pages (`/`, `/features`, `/docs`), CSR for dashboard (`/app/*`)
-- Deployment target: Kubernetes (containerized)
+- Rendering strategy: Hybrid — SSG for public landing page (`/`, `/features`), CSR for Observation Deck (`/app/*`)
+- Deployment target: Docker Compose (local-first), Kubernetes (production)
 
 ## API design
-- Style: REST (CRUD) + SSE (LLM token streaming, agent output) + WebSockets (bidirectional — user intervention, live dashboard status)
+- Style: REST (CRUD) + SSE (LLM token streaming, agent output) + WebSockets (bidirectional — user intervention, live Observation Deck)
 - Versioning: `/api/v1/` prefix
-- Auth method: JWT + API keys
+- Auth method: JWT + API keys, default-deny at middleware level
 - API spec: OpenAPI / Swagger (auto-generated by FastAPI)
 
 ## Data layer
 - Primary database: PostgreSQL
 - ORM: SQLAlchemy
 - Migration tool: Alembic
-- Caching layer: Redis
+- Message bus: Redis Streams (Den Den Mushi)
+- State persistence: Vivre Card snapshots in PostgreSQL
 
 ## Auth
-- Provider: Custom JWT-based auth
+- **Default-deny** at middleware level — no route is open unless explicitly allowed
+- JWT-based authentication
 - Session storage: Redis-backed sessions
 - Protected routes: Middleware-level enforcement
 
-## State
-- Server state: React Query (TanStack Query)
-- Client state: Zustand
+## Dial System (LLM Gateway)
+- Provider-agnostic: Anthropic, OpenAI, local models
+- Config-driven role mapping: each agent persona can be mapped to a specific provider/model
+- Failover: when a provider hits its limit, the system checkpoints agent state (Vivre Card), migrates to fallback providers, or parks non-critical agents
+- No work is lost — ever
 
-## Infrastructure
-- Local dev: Docker Compose
-- Production: Kubernetes + Helm charts
-- Queue / async: Celery + Redis
-- Secrets management: Kubernetes secrets (production), .env (local dev)
+## Agent Execution
+- Agents work in **real git repos** with **per-agent branches**
+- Agents execute in **sandboxed containers** — isolated, secure
+- Agent state is persisted to PostgreSQL (Vivre Cards) for resumability
+- Inter-agent communication via Redis Streams (Den Den Mushi)
+- All agent executions are logged for observability (Ship's Log)
 
-## AI layer
-- LLM providers: OpenAI, Anthropic, local models — configurable per workflow
-- Agent framework: LangGraph
-- Observability: LangSmith (optional tracing)
-- Per-workflow config: Each workflow can specify its own LLM provider, model, temperature, etc.
+## Deployment Tiers
+
+| Tier | Name | Trigger | Approval |
+|---|---|---|---|
+| Preview | Auto-preview | Automatic on branch push | None |
+| Staging | Semi-auto | Automatic on PR merge to staging | Lightweight review |
+| Production | PR-only | PR merge to main | Full review required |
 
 ## What good output looks like
 - Clean, typed code with no `any` types
-- Every feature has tests before implementation (TDD)
-- Every feature goes through PDD workflow (context → prompts → review)
+- Every feature has tests before implementation (TDD — the Doctor writes health checks first)
+- Every feature goes through PDD workflow (Navigator writes Poneglyphs first)
 - Documentation auto-updates with code changes
 - All API endpoints documented via OpenAPI
-- Agent workflows are observable end-to-end
+- Agent workflows are observable end-to-end via the Observation Deck
+- One Piece terminology used consistently throughout the codebase
 
 ## Constraints (what the AI should never do or suggest)
-- Never skip writing tests — TDD is mandatory
-- Never bypass PDD workflow for features
+- Never skip writing tests — TDD is the Log Pose
+- Never bypass PDD workflow — Poneglyphs guide every step
 - Never hardcode LLM API keys or secrets in source code
 - Never use `any` type in TypeScript
 - Never put artifacts outside the `src/` directory structure
 - Never make direct changes to `main` — all changes go through PRs
 - Never skip documentation updates when features change
+- Never allow agent execution outside sandboxed containers
+- Never lose work — Vivre Card checkpointing is mandatory for provider failover
 
 ## Current state
 Starting from scratch — project scaffolded with PDD structure, no application code yet.
@@ -87,8 +144,13 @@ Starting from scratch — project scaffolded with PDD structure, no application 
 All application artifacts live under `src/`:
 ```
 src/
-  frontend/     — Next.js application
-  backend/      — FastAPI application
-  shared/       — Shared types, schemas, constants
-  infra/        — Docker, Kubernetes, Helm configs
+  frontend/         — Next.js application (landing page + Observation Deck)
+  backend/          — FastAPI application
+    api/            — Route handlers (REST, SSE, WebSocket)
+    crew/           — Agent persona definitions (Captain, Navigator, etc.)
+    dial_system/    — LLM gateway, provider routing, failover
+    services/       — Business logic layer
+    models/         — SQLAlchemy models (including Vivre Card state)
+  shared/           — Shared types, schemas, constants
+  infra/            — Docker, Kubernetes, Helm configs
 ```
