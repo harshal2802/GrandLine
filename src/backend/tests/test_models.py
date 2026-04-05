@@ -1,0 +1,179 @@
+"""Tests for SQLAlchemy model definitions."""
+
+from sqlalchemy import inspect
+
+from app.models import Base
+from app.models.crew_action import CrewAction
+from app.models.dial_config import DialConfig
+from app.models.enums import CheckpointReason, CrewRole, VoyageStatus
+from app.models.poneglyph import Poneglyph
+from app.models.user import User
+from app.models.vivre_card import VivreCard
+from app.models.voyage import Voyage, VoyagePlan
+
+
+def test_all_models_registered_in_metadata() -> None:
+    table_names = set(Base.metadata.tables.keys())
+    expected = {
+        "users",
+        "voyages",
+        "voyage_plans",
+        "poneglyphs",
+        "vivre_cards",
+        "crew_actions",
+        "dial_configs",
+    }
+    assert expected == table_names
+
+
+def test_user_table_columns() -> None:
+    mapper = inspect(User)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "email",
+        "username",
+        "hashed_password",
+        "is_active",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_voyage_table_columns() -> None:
+    mapper = inspect(Voyage)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "user_id",
+        "title",
+        "description",
+        "status",
+        "target_repo",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_voyage_plan_table_columns() -> None:
+    mapper = inspect(VoyagePlan)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "phases",
+        "created_by",
+        "version",
+        "created_at",
+    }
+
+
+def test_poneglyph_table_columns() -> None:
+    mapper = inspect(Poneglyph)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "phase_number",
+        "content",
+        "metadata",
+        "created_by",
+        "created_at",
+    }
+
+
+def test_vivre_card_table_columns() -> None:
+    mapper = inspect(VivreCard)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "crew_member",
+        "state_data",
+        "checkpoint_reason",
+        "created_at",
+    }
+
+
+def test_crew_action_table_columns() -> None:
+    mapper = inspect(CrewAction)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "crew_member",
+        "action_type",
+        "summary",
+        "details",
+        "created_at",
+    }
+
+
+def test_dial_config_table_columns() -> None:
+    mapper = inspect(DialConfig)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "role_mapping",
+        "fallback_chain",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_voyage_status_enum_values() -> None:
+    assert VoyageStatus.CHARTED.value == "CHARTED"
+    assert VoyageStatus.PLANNING.value == "PLANNING"
+    assert VoyageStatus.PDD.value == "PDD"
+    assert VoyageStatus.TDD.value == "TDD"
+    assert VoyageStatus.BUILDING.value == "BUILDING"
+    assert VoyageStatus.REVIEWING.value == "REVIEWING"
+    assert VoyageStatus.DEPLOYING.value == "DEPLOYING"
+    assert VoyageStatus.COMPLETED.value == "COMPLETED"
+    assert VoyageStatus.FAILED.value == "FAILED"
+    assert VoyageStatus.PAUSED.value == "PAUSED"
+    assert VoyageStatus.CANCELLED.value == "CANCELLED"
+    assert len(VoyageStatus) == 11
+
+
+def test_crew_role_enum_values() -> None:
+    assert CrewRole.CAPTAIN.value == "captain"
+    assert CrewRole.NAVIGATOR.value == "navigator"
+    assert CrewRole.DOCTOR.value == "doctor"
+    assert CrewRole.SHIPWRIGHT.value == "shipwright"
+    assert CrewRole.HELMSMAN.value == "helmsman"
+    assert len(CrewRole) == 5
+
+
+def test_checkpoint_reason_enum_values() -> None:
+    assert CheckpointReason.INTERVAL.value == "interval"
+    assert CheckpointReason.FAILOVER.value == "failover"
+    assert CheckpointReason.PAUSE.value == "pause"
+    assert CheckpointReason.MIGRATION.value == "migration"
+    assert len(CheckpointReason) == 4
+
+
+def test_user_relationships() -> None:
+    mapper = inspect(User)
+    rel_names = {r.key for r in mapper.relationships}
+    assert "voyages" in rel_names
+
+
+def test_voyage_relationships() -> None:
+    mapper = inspect(Voyage)
+    rel_names = {r.key for r in mapper.relationships}
+    expected = {"user", "plans", "poneglyphs", "vivre_cards", "crew_actions", "dial_config"}
+    assert expected == rel_names
+
+
+def test_dial_config_voyage_unique_constraint() -> None:
+    table = DialConfig.__table__
+    voyage_col = table.c.voyage_id
+    assert voyage_col.unique is True
+
+
+def test_crew_action_crew_member_indexed() -> None:
+    table = CrewAction.__table__
+    crew_col = table.c.crew_member
+    assert crew_col.index is True
