@@ -7,6 +7,12 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      animation: {
+        "pulse-slow": "pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+      },
+      borderWidth: {
+        6: "6px",
+      },
       colors: {
         ocean: {
           50: "#f0f9ff",
