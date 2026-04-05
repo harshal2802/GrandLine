@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import v1_router
 from app.core.config import settings
+from app.core.middleware import DefaultDenyMiddleware
 
 
 def create_app() -> FastAPI:
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(DefaultDenyMiddleware)
 
     app.include_router(v1_router)
 

@@ -8,6 +8,11 @@ sqlalchemy[asyncio]==2.0.35
 psycopg[binary]==3.2.3
 alembic==1.13.3
 
+# Auth
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+email-validator==2.2.0
+
 # Redis
 redis==5.1.1
 
