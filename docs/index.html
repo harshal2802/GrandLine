@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GrandLine Documentation</title>
+  <style>
+    :root {
+      --ocean-50: #f0f9ff;
+      --ocean-100: #e0f2fe;
+      --ocean-300: #7dd3fc;
+      --ocean-400: #38bdf8;
+      --ocean-700: #0369a1;
+      --ocean-800: #075985;
+      --ocean-900: #0c4a6e;
+      --ocean-950: #082f49;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--ocean-950);
+      color: var(--ocean-100);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4rem 1rem;
+    }
+    h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .subtitle { color: var(--ocean-300); font-size: 1.1rem; margin-bottom: 3rem; }
+    .sections {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      max-width: 800px;
+      width: 100%;
+    }
+    .card {
+      background: var(--ocean-900);
+      border: 1px solid var(--ocean-700);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--ocean-50); }
+    .card p { color: var(--ocean-300); font-size: 0.9rem; line-height: 1.5; }
+    .badge {
+      display: inline-block;
+      background: var(--ocean-800);
+      color: var(--ocean-300);
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    footer {
+      margin-top: 4rem;
+      color: var(--ocean-700);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>GrandLine</h1>
+  <p class="subtitle">Multi-Agent Orchestration Platform Documentation</p>
+
+  <div class="sections">
+    <div class="card">
+      <h2>The Crew</h2>
+      <p>Captain (PM), Navigator (Architect), Shipwrights (Devs), Doctor (QA), Helmsman (DevOps) — persona-based AI agents that voyage together.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+
+    <div class="card">
+      <h2>Observation Deck</h2>
+      <p>Real-time war room UI with Sea Chart (board), Crew Map (DAG), and Ship's Log (timeline) views.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+
+    <div class="card">
+      <h2>Dial System</h2>
+      <p>Provider-agnostic LLM gateway with config-driven role mapping and automatic failover via Vivre Card checkpoints.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+
+    <div class="card">
+      <h2>API Reference</h2>
+      <p>REST + SSE + WebSocket API documentation. Auto-generated from FastAPI OpenAPI spec.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+
+    <div class="card">
+      <h2>Deployment</h2>
+      <p>Docker Compose (local-first) and Kubernetes + Helm (production) deployment guides.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+
+    <div class="card">
+      <h2>PDD Guide</h2>
+      <p>How GrandLine uses Prompt Driven Development and Test Driven Development — the Log Pose.</p>
+      <span class="badge">Coming soon</span>
+    </div>
+  </div>
+
+  <footer>
+    Assemble your crew. Navigate the GrandLine.
+  </footer>
+</body>
+</html>
