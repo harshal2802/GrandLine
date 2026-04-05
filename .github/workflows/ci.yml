@@ -50,6 +50,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Format check (ruff)
+        run: ruff format --check .
+
       - name: Type check (mypy)
         run: mypy app/ --ignore-missing-imports
 
