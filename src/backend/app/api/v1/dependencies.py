@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import JWTError, decode_token
+from app.den_den_mushi.mushi import DenDenMushi
 from app.models import get_db
 from app.models.user import User
 
@@ -23,6 +24,11 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
         yield client
     finally:
         await client.aclose()
+
+
+def get_den_den_mushi(request: Request) -> DenDenMushi:
+    mushi: DenDenMushi = request.app.state.den_den_mushi
+    return mushi
 
 
 async def get_current_user(
