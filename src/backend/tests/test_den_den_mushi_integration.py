@@ -287,8 +287,8 @@ class TestTrim:
             )
             await mushi.publish(stream, event)
 
-        # Trim to ~5 (approximate)
-        await mushi.trim(stream, maxlen=5)
+        # Trim to exactly 5 (approximate=False for deterministic test)
+        await mushi.trim(stream, maxlen=5, approximate=False)
 
         remaining = await mushi.replay(stream)
-        assert len(remaining) <= 6  # approximate allows slight overshoot
+        assert len(remaining) == 5
