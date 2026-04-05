@@ -2,6 +2,9 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: requires a running Redis instance",
+]
 
 [tool.ruff]
 target-version = "py312"
