@@ -230,6 +230,15 @@ class TestMalformedData:
         assert len(results) == 1
         assert isinstance(results[0][1], VoyagePlanCreatedEvent)
 
+        # Malformed message was ACKed by read(), only valid message remains pending
+        pending = await mushi.get_pending_count(stream, group)
+        assert pending == 1
+
+        # Malformed message was dead-lettered
+        dl_messages = await redis_client.xrange(DEAD_LETTER_STREAM)
+        assert len(dl_messages) == 1
+        assert dl_messages[0][1]["original_stream"] == stream
+
 
 class TestConsumeLoopIntegration:
     @pytest.mark.asyncio

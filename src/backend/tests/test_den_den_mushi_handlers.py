@@ -73,6 +73,7 @@ class TestConsumeLoop:
         registry.on("voyage_plan_created", handler)
 
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         # First call returns an event, second raises CancelledError to stop the loop
         mushi.read.side_effect = [
             [("msg-1", event)],
@@ -94,6 +95,7 @@ class TestConsumeLoop:
         registry.on("voyage_plan_created", handler)
 
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         # Return event, then pending info showing retry count < MAX_RETRIES
         mushi.read.side_effect = [
             [("msg-1", event)],
@@ -118,6 +120,7 @@ class TestConsumeLoop:
         registry.on("voyage_plan_created", handler)
 
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         mushi.read.side_effect = [
             [("msg-1", event)],
             asyncio.CancelledError(),
@@ -142,6 +145,7 @@ class TestConsumeLoop:
     @pytest.mark.asyncio
     async def test_ensures_consumer_group_on_start(self) -> None:
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         mushi.read.side_effect = asyncio.CancelledError()
         mushi._redis = AsyncMock()
 
@@ -161,6 +165,7 @@ class TestConsumeLoop:
         registry.on("voyage_plan_created", handler)
 
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         mushi.read.side_effect = [
             [],  # empty read
             [("msg-1", event)],  # event arrives
@@ -179,6 +184,7 @@ class TestConsumeLoop:
         registry = HandlerRegistry()  # no handlers registered
 
         mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.return_value = []
         mushi.read.side_effect = [
             [("msg-1", event)],
             asyncio.CancelledError(),
@@ -189,3 +195,25 @@ class TestConsumeLoop:
 
         # Should still ack even with no handlers
         mushi.ack.assert_awaited_once_with(STREAM, GROUP, "msg-1")
+
+    @pytest.mark.asyncio
+    async def test_processes_stale_pending_messages(self) -> None:
+        """claim_stale recovers pending messages and routes them through handlers."""
+        event = _make_event()
+        handler = AsyncMock()
+
+        registry = HandlerRegistry()
+        registry.on("voyage_plan_created", handler)
+
+        mushi = AsyncMock(spec=DenDenMushi)
+        mushi.claim_stale.side_effect = [
+            [("stale-1", event)],
+            asyncio.CancelledError(),
+        ]
+        mushi.read.return_value = []
+
+        with pytest.raises(asyncio.CancelledError):
+            await consume_loop(mushi, STREAM, CrewRole.NAVIGATOR, CONSUMER, registry)
+
+        handler.assert_awaited_once_with(event)
+        mushi.ack.assert_awaited_once_with(STREAM, GROUP, "stale-1")

@@ -38,9 +38,11 @@ async def consume_loop(
     await mushi.ensure_group(stream, group)
 
     while True:
+        # Recover stale pending messages before reading new ones
+        stale = await mushi.claim_stale(stream, group, consumer_id)
         messages = await mushi.read(stream, group, consumer_id, block_ms=block_ms)
 
-        for msg_id, event in messages:
+        for msg_id, event in stale + messages:
             handlers = registry.handlers_for(event.event_type)
 
             if not handlers:

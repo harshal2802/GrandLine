@@ -134,9 +134,11 @@ class TestRead:
         assert results == []
 
     @pytest.mark.asyncio
-    async def test_read_skips_malformed_messages(self) -> None:
+    async def test_read_dead_letters_and_acks_malformed_messages(self) -> None:
         redis = AsyncMock()
         redis.xreadgroup.return_value = [[STREAM, [("bad-id", {"data": "not valid json {{"})]]]
+        redis.xadd.return_value = "dl-1-0"
+        redis.xack.return_value = 1
         mushi = DenDenMushi(redis)
 
         with patch("app.den_den_mushi.mushi.logger") as mock_logger:
@@ -144,13 +146,18 @@ class TestRead:
 
         assert results == []
         mock_logger.warning.assert_called_once()
+        # Malformed message is dead-lettered and ACKed
+        redis.xadd.assert_awaited_once()
+        redis.xack.assert_awaited_once_with(STREAM, GROUP, "bad-id")
 
     @pytest.mark.asyncio
-    async def test_read_skips_invalid_event_data(self) -> None:
+    async def test_read_dead_letters_and_acks_invalid_event_data(self) -> None:
         redis = AsyncMock()
         redis.xreadgroup.return_value = [
             [STREAM, [("bad-id", {"data": json.dumps({"event_type": "unknown"})})]]
         ]
+        redis.xadd.return_value = "dl-1-0"
+        redis.xack.return_value = 1
         mushi = DenDenMushi(redis)
 
         with patch("app.den_den_mushi.mushi.logger") as mock_logger:
@@ -158,6 +165,8 @@ class TestRead:
 
         assert results == []
         mock_logger.warning.assert_called_once()
+        redis.xadd.assert_awaited_once()
+        redis.xack.assert_awaited_once_with(STREAM, GROUP, "bad-id")
 
 
 class TestAck:
@@ -218,10 +227,11 @@ class TestClaimStale:
     async def test_claim_stale_calls_xautoclaim(self) -> None:
         event = _make_event()
         redis = AsyncMock()
-        # xautoclaim returns (next_start_id, [(msg_id, fields), ...])
+        # xautoclaim returns (next_start_id, [(msg_id, fields), ...], [deleted_ids])
         redis.xautoclaim.return_value = (
             "0-0",
             [("stale-1-0", {"data": event.model_dump_json()})],
+            [],
         )
         mushi = DenDenMushi(redis)
 
@@ -238,7 +248,7 @@ class TestClaimStale:
     @pytest.mark.asyncio
     async def test_claim_stale_returns_empty_when_none(self) -> None:
         redis = AsyncMock()
-        redis.xautoclaim.return_value = ("0-0", [])
+        redis.xautoclaim.return_value = ("0-0", [], [])
         mushi = DenDenMushi(redis)
 
         results = await mushi.claim_stale(STREAM, GROUP, CONSUMER)

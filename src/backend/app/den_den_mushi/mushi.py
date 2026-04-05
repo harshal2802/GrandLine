@@ -57,6 +57,14 @@ class DenDenMushi:
                         stream,
                         exc,
                     )
+                    await self.send_to_dead_letter(
+                        original_stream=stream,
+                        msg_id=msg_id,
+                        event_data={"raw_fields": {k: v for k, v in fields.items()}},
+                        error=str(exc),
+                        retry_count=0,
+                    )
+                    await self.ack(stream, group, msg_id)
         return results
 
     async def ack(self, stream: str, group: str, *msg_ids: str) -> int:
@@ -92,7 +100,7 @@ class DenDenMushi:
         min_idle_ms: int = CLAIM_MIN_IDLE_MS,
         count: int = 10,
     ) -> list[tuple[str, DenDenMushiEvent]]:
-        _next_id, claimed = await self._redis.xautoclaim(
+        _next_id, claimed, _deleted = await self._redis.xautoclaim(
             stream, group, consumer, min_idle_time=min_idle_ms, start_id="0-0", count=count
         )
 
@@ -109,6 +117,14 @@ class DenDenMushi:
                     stream,
                     exc,
                 )
+                await self.send_to_dead_letter(
+                    original_stream=stream,
+                    msg_id=msg_id,
+                    event_data={"raw_fields": {k: v for k, v in fields.items()}},
+                    error=str(exc),
+                    retry_count=0,
+                )
+                await self.ack(stream, group, msg_id)
         return results
 
     async def replay(
