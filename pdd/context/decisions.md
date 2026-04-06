@@ -1,6 +1,6 @@
 # GrandLine — Architectural Decisions
 
-**Last updated**: 2026-04-04
+**Last updated**: 2026-04-05
 
 ---
 
@@ -29,10 +29,18 @@
 ---
 
 ## Decision: Dial System (LLM gateway) with config-driven role mapping
-**Date**: 2026-04-04
-**What was decided**: All LLM calls go through the Dial System — a gateway that routes requests based on crew role configuration. Each agent persona can be mapped to a different provider/model. Failover is automatic with Vivre Card checkpointing.
-**Why**: Provider-agnostic by design. Users can run the Captain on Claude, Shipwrights on GPT-4, and the Doctor on a local model — all via config, not code changes. When a provider hits rate limits, the Dial System checkpoints state (Vivre Card), migrates to a fallback, or parks non-critical agents. No work is lost.
+**Date**: 2026-04-04 (implemented 2026-04-05)
+**What was decided**: All LLM calls go through the Dial System — a gateway that routes requests based on crew role configuration. Each agent persona can be mapped to a different provider/model. Failover is automatic with ProviderError-driven chain traversal.
+**Why**: Provider-agnostic by design. Users can run the Captain on Claude, Shipwrights on GPT-4, and the Doctor on a local model — all via config, not code changes. When a provider hits rate limits or errors, the Dial System catches `ProviderError`, tries the fallback chain, and publishes `ProviderSwitchedEvent` via Den Den Mushi.
 **Don't suggest**: Direct provider SDK calls from agents, single-provider lock-in, manual failover
+
+---
+
+## Decision: Adapter factory pattern over global adapter instances
+**Date**: 2026-04-05
+**What was decided**: Provider adapters are created per-request via `create_adapter()` and `build_router_from_config()` in `factory.py`. No global adapter instances — the factory reads DialConfig JSONB from DB and wires a fresh `DialSystemRouter` per request via FastAPI's `Depends(get_dial_router)`.
+**Why**: Config can change at any time via `PUT /dial-config`. If adapters were global singletons, config changes would require a restart or cache invalidation. Per-request creation means the next API call picks up new config immediately. The factory also centralizes provider-to-adapter mapping, making it easy to add new providers.
+**Don't suggest**: Global adapter singletons, adapter caching without invalidation, direct adapter instantiation in route handlers
 
 ---
 
