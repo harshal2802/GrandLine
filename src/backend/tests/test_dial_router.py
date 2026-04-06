@@ -280,6 +280,7 @@ class TestRateLimiterIntegration:
     async def test_records_usage_after_successful_completion(self) -> None:
         adapter = _make_adapter()
         rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.check.return_value = RateLimitStatus(is_limited=False)
 
         router = DialSystemRouter(
             role_mapping={CrewRole.CAPTAIN: adapter},
@@ -292,3 +293,59 @@ class TestRateLimiterIntegration:
         await router.route(CrewRole.CAPTAIN, _make_request())
 
         rate_limiter.record_usage.assert_awaited_once_with("anthropic", 15)
+
+    @pytest.mark.asyncio
+    async def test_redis_rate_limiter_triggers_failover(self) -> None:
+        """When Redis rate limiter says provider is limited, skip to fallback."""
+        primary = _make_adapter()
+        fallback = _make_adapter(result=_make_result(provider="openai", model="gpt-4o"))
+
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        # Primary adapter says not limited, but Redis says limited for unknown
+        # (mock adapters resolve to "unknown"), not limited for "openai"
+        call_count = 0
+
+        async def mock_check(provider: str) -> RateLimitStatus:
+            nonlocal call_count
+            call_count += 1
+            # First call is for primary (unknown), second is for fallback (unknown)
+            # We want primary limited, fallback not limited
+            if call_count == 1:
+                return RateLimitStatus(is_limited=True)
+            return RateLimitStatus(is_limited=False)
+
+        rate_limiter.check = mock_check
+
+        mushi = AsyncMock(spec=DenDenMushi)
+
+        router = DialSystemRouter(
+            role_mapping={CrewRole.CAPTAIN: primary},
+            fallback_chains={CrewRole.CAPTAIN: [fallback]},
+            mushi=mushi,
+            voyage_id=VOYAGE_ID,
+            rate_limiter=rate_limiter,
+        )
+
+        result = await router.route(CrewRole.CAPTAIN, _make_request())
+
+        assert result.provider == "openai"
+        primary.complete.assert_not_awaited()
+        fallback.complete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_redis_check_called_with_provider_name(self) -> None:
+        adapter = _make_adapter()
+        rate_limiter = AsyncMock(spec=RateLimiter)
+        rate_limiter.check.return_value = RateLimitStatus(is_limited=False)
+
+        router = DialSystemRouter(
+            role_mapping={CrewRole.CAPTAIN: adapter},
+            fallback_chains={},
+            mushi=AsyncMock(spec=DenDenMushi),
+            voyage_id=VOYAGE_ID,
+            rate_limiter=rate_limiter,
+        )
+
+        await router.route(CrewRole.CAPTAIN, _make_request())
+
+        rate_limiter.check.assert_awaited()

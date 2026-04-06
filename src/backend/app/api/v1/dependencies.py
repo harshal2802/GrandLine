@@ -18,6 +18,7 @@ from app.dial_system.router import DialSystemRouter
 from app.models import get_db
 from app.models.dial_config import DialConfig
 from app.models.user import User
+from app.models.voyage import Voyage
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -82,12 +83,30 @@ async def get_current_user(
     return user
 
 
+async def get_authorized_voyage(
+    voyage_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Voyage:
+    result = await session.execute(
+        select(Voyage).where(Voyage.id == voyage_id, Voyage.user_id == user.id)
+    )
+    voyage = result.scalar_one_or_none()
+    if voyage is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Voyage not found",
+        )
+    return voyage
+
+
 async def get_dial_router(
     voyage_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
+    _voyage: Voyage = Depends(get_authorized_voyage),
     mushi: DenDenMushi = Depends(get_den_den_mushi),
     redis: Redis = Depends(get_redis),
-) -> DialSystemRouter:
+) -> AsyncGenerator[DialSystemRouter, None]:
     result = await session.execute(select(DialConfig).where(DialConfig.voyage_id == voyage_id))
     config = result.scalar_one_or_none()
     if config is None:
@@ -96,4 +115,8 @@ async def get_dial_router(
             detail="Dial config not found for this voyage",
         )
     rate_limiter = RateLimiter(redis)
-    return build_router_from_config(config, settings, mushi, rate_limiter)
+    router = build_router_from_config(config, settings, mushi, rate_limiter)
+    try:
+        yield router
+    finally:
+        await router.close()

@@ -30,6 +30,28 @@ class DialSystemRouter:
         self._voyage_id = voyage_id
         self._rate_limiter = rate_limiter
 
+    async def _is_rate_limited(self, adapter: ProviderAdapter) -> bool:
+        """Check both adapter-level and Redis-level rate limits."""
+        if adapter.check_rate_limit().is_limited:
+            return True
+        if self._rate_limiter:
+            provider_name = self._get_provider_name(adapter)
+            redis_status = await self._rate_limiter.check(provider_name)
+            if redis_status.is_limited:
+                return True
+        return False
+
+    def _get_provider_name(self, adapter: ProviderAdapter) -> str:
+        """Extract provider name from adapter class."""
+        cls_name = type(adapter).__name__.lower()
+        if "anthropic" in cls_name:
+            return "anthropic"
+        if "openai" in cls_name:
+            return "openai"
+        if "ollama" in cls_name:
+            return "ollama"
+        return "unknown"
+
     async def route(self, role: CrewRole, request: CompletionRequest) -> CompletionResult:
         if role not in self._role_mapping:
             raise ValueError(f"No provider configured for role {role.value}")
@@ -37,7 +59,7 @@ class DialSystemRouter:
         primary = self._role_mapping[role]
 
         # Try primary adapter
-        if not primary.check_rate_limit().is_limited:
+        if not await self._is_rate_limited(primary):
             try:
                 result = await primary.complete(request)
                 if self._rate_limiter:
@@ -51,7 +73,7 @@ class DialSystemRouter:
         # Failover to fallback chain
         fallbacks = self._fallback_chains.get(role, [])
         for fallback in fallbacks:
-            if fallback.check_rate_limit().is_limited:
+            if await self._is_rate_limited(fallback):
                 continue
             try:
                 result = await fallback.complete(request)
@@ -73,7 +95,7 @@ class DialSystemRouter:
         primary = self._role_mapping[role]
 
         # Try primary adapter
-        if not primary.check_rate_limit().is_limited:
+        if not await self._is_rate_limited(primary):
             try:
                 async for token in primary.stream(request):
                     yield token
@@ -84,7 +106,7 @@ class DialSystemRouter:
         # Failover to fallback chain
         fallbacks = self._fallback_chains.get(role, [])
         for fallback in fallbacks:
-            if fallback.check_rate_limit().is_limited:
+            if await self._is_rate_limited(fallback):
                 continue
             try:
                 await self._publish_switch_event(role, "fallback")
@@ -95,6 +117,18 @@ class DialSystemRouter:
                 logger.warning("Fallback stream failed for %s: %s", role.value, exc)
 
         raise RuntimeError(f"All providers exhausted for role {role.value}")
+
+    async def close(self) -> None:
+        """Close all adapter clients to prevent resource leaks."""
+        adapters = list(self._role_mapping.values())
+        for chain in self._fallback_chains.values():
+            adapters.extend(chain)
+        for adapter in adapters:
+            client = getattr(adapter, "_client", None)
+            if client is not None and hasattr(client, "close"):
+                await client.close()
+            elif client is not None and hasattr(client, "aclose"):
+                await client.aclose()
 
     async def _publish_switch_event(self, role: CrewRole, new_provider: str) -> None:
         event = ProviderSwitchedEvent(

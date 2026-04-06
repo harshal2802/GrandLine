@@ -8,11 +8,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.dependencies import get_current_user, get_dial_router
+from app.api.v1.dependencies import get_authorized_voyage, get_dial_router
 from app.dial_system.router import DialSystemRouter
 from app.models import get_db
 from app.models.dial_config import DialConfig
-from app.models.user import User
+from app.models.voyage import Voyage
 from app.schemas.dial_config import DialConfigRead, DialConfigUpdate
 from app.schemas.dial_system import CompletionRequest, CompletionResult
 
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/voyages", tags=["dial-system"])
 async def get_dial_config(
     voyage_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _voyage: Voyage = Depends(get_authorized_voyage),
 ) -> DialConfig:
     result = await session.execute(select(DialConfig).where(DialConfig.voyage_id == voyage_id))
     config = result.scalar_one_or_none()
@@ -37,7 +37,7 @@ async def update_dial_config(
     voyage_id: uuid.UUID,
     body: DialConfigUpdate,
     session: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _voyage: Voyage = Depends(get_authorized_voyage),
 ) -> DialConfig:
     result = await session.execute(select(DialConfig).where(DialConfig.voyage_id == voyage_id))
     config = result.scalar_one_or_none()
@@ -62,7 +62,6 @@ async def create_completion(
     voyage_id: uuid.UUID,
     body: CompletionRequest,
     dial_router: DialSystemRouter = Depends(get_dial_router),
-    _user: User = Depends(get_current_user),
 ) -> CompletionResult:
     return await dial_router.route(body.role, body)
 
@@ -72,7 +71,6 @@ async def create_completion_stream(
     voyage_id: uuid.UUID,
     body: CompletionRequest,
     dial_router: DialSystemRouter = Depends(get_dial_router),
-    _user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     async def generate() -> AsyncIterator[str]:
         async for token in dial_router.stream(body.role, body):
