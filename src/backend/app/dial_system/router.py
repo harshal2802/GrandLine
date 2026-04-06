@@ -7,7 +7,8 @@ from collections.abc import AsyncIterator
 from app.den_den_mushi.constants import stream_key
 from app.den_den_mushi.events import ProviderSwitchedEvent
 from app.den_den_mushi.mushi import DenDenMushi
-from app.dial_system.adapters.base import ProviderAdapter
+from app.dial_system.adapters.base import ProviderAdapter, ProviderError
+from app.dial_system.rate_limiter import RateLimiter
 from app.models.enums import CrewRole
 from app.schemas.dial_system import CompletionRequest, CompletionResult
 
@@ -21,11 +22,13 @@ class DialSystemRouter:
         fallback_chains: dict[CrewRole, list[ProviderAdapter]],
         mushi: DenDenMushi,
         voyage_id: uuid.UUID,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         self._role_mapping = role_mapping
         self._fallback_chains = fallback_chains
         self._mushi = mushi
         self._voyage_id = voyage_id
+        self._rate_limiter = rate_limiter
 
     async def route(self, role: CrewRole, request: CompletionRequest) -> CompletionResult:
         if role not in self._role_mapping:
@@ -36,8 +39,13 @@ class DialSystemRouter:
         # Try primary adapter
         if not primary.check_rate_limit().is_limited:
             try:
-                return await primary.complete(request)
-            except Exception as exc:
+                result = await primary.complete(request)
+                if self._rate_limiter:
+                    await self._rate_limiter.record_usage(
+                        result.provider, result.usage.total_tokens
+                    )
+                return result
+            except ProviderError as exc:
                 logger.warning("Primary provider failed for %s: %s", role.value, exc)
 
         # Failover to fallback chain
@@ -47,9 +55,13 @@ class DialSystemRouter:
                 continue
             try:
                 result = await fallback.complete(request)
+                if self._rate_limiter:
+                    await self._rate_limiter.record_usage(
+                        result.provider, result.usage.total_tokens
+                    )
                 await self._publish_switch_event(role, result.provider)
                 return result
-            except Exception as exc:
+            except ProviderError as exc:
                 logger.warning("Fallback provider failed for %s: %s", role.value, exc)
 
         raise RuntimeError(f"All providers exhausted for role {role.value}")
@@ -58,9 +70,31 @@ class DialSystemRouter:
         if role not in self._role_mapping:
             raise ValueError(f"No provider configured for role {role.value}")
 
-        adapter = self._role_mapping[role]
-        async for token in adapter.stream(request):
-            yield token
+        primary = self._role_mapping[role]
+
+        # Try primary adapter
+        if not primary.check_rate_limit().is_limited:
+            try:
+                async for token in primary.stream(request):
+                    yield token
+                return
+            except ProviderError as exc:
+                logger.warning("Primary stream failed for %s: %s", role.value, exc)
+
+        # Failover to fallback chain
+        fallbacks = self._fallback_chains.get(role, [])
+        for fallback in fallbacks:
+            if fallback.check_rate_limit().is_limited:
+                continue
+            try:
+                await self._publish_switch_event(role, "fallback")
+                async for token in fallback.stream(request):
+                    yield token
+                return
+            except ProviderError as exc:
+                logger.warning("Fallback stream failed for %s: %s", role.value, exc)
+
+        raise RuntimeError(f"All providers exhausted for role {role.value}")
 
     async def _publish_switch_event(self, role: CrewRole, new_provider: str) -> None:
         event = ProviderSwitchedEvent(

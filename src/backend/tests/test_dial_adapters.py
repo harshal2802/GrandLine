@@ -5,17 +5,24 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from anthropic import APIError as AnthropicAPIError
+from anthropic import RateLimitError as AnthropicRateLimitError
+from openai import RateLimitError as OpenAIRateLimitError
 
 from app.dial_system.adapters.anthropic import AnthropicAdapter
+from app.dial_system.adapters.base import ProviderError
 from app.dial_system.adapters.ollama import OllamaAdapter
 from app.dial_system.adapters.openai import OpenAIAdapter
+from app.models.enums import CrewRole
 from app.schemas.dial_system import CompletionRequest, CompletionResult
 
 
 def _make_request() -> CompletionRequest:
     return CompletionRequest(
         messages=[{"role": "user", "content": "Hello"}],
+        role=CrewRole.CAPTAIN,
         max_tokens=100,
         temperature=0.7,
     )
@@ -255,3 +262,92 @@ class TestOllamaAdapter:
         )
         status = adapter.check_rate_limit()
         assert status.is_limited is False
+
+    @pytest.mark.asyncio
+    async def test_complete_raises_provider_error_on_non_200(self) -> None:
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_client.post.return_value = mock_response
+
+        adapter = OllamaAdapter(
+            client=mock_client, model="llama3", base_url="http://localhost:11434"
+        )
+
+        with pytest.raises(ProviderError, match="HTTP 500"):
+            await adapter.complete(_make_request())
+
+    @pytest.mark.asyncio
+    async def test_complete_raises_provider_error_on_connection_error(
+        self,
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ConnectError("Connection refused")
+
+        adapter = OllamaAdapter(
+            client=mock_client, model="llama3", base_url="http://localhost:11434"
+        )
+
+        with pytest.raises(ProviderError, match="connection error"):
+            await adapter.complete(_make_request())
+
+
+class TestAnthropicErrorHandling:
+    @pytest.mark.asyncio
+    async def test_rate_limit_error_raises_provider_error(self) -> None:
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {}
+        mock_client.messages.create.side_effect = AnthropicRateLimitError(
+            message="Rate limited",
+            response=mock_response,
+            body=None,
+        )
+
+        adapter = AnthropicAdapter(client=mock_client, model="claude-sonnet-4-20250514")
+
+        with pytest.raises(ProviderError, match="rate limited"):
+            await adapter.complete(_make_request())
+
+        assert adapter.check_rate_limit().is_limited is True
+
+    @pytest.mark.asyncio
+    async def test_api_error_raises_provider_error(self) -> None:
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.headers = {}
+        mock_client.messages.create.side_effect = AnthropicAPIError(
+            message="Server error",
+            request=MagicMock(),
+            body=None,
+        )
+
+        adapter = AnthropicAdapter(client=mock_client, model="claude-sonnet-4-20250514")
+
+        with pytest.raises(ProviderError, match="API error"):
+            await adapter.complete(_make_request())
+
+
+class TestOpenAIErrorHandling:
+    @pytest.mark.asyncio
+    async def test_rate_limit_error_raises_provider_error(self) -> None:
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {}
+        mock_response.json.return_value = {"error": {"message": "Rate limited"}}
+        mock_client.chat.completions.create.side_effect = OpenAIRateLimitError(
+            message="Rate limited",
+            response=mock_response,
+            body={"error": {"message": "Rate limited"}},
+        )
+
+        adapter = OpenAIAdapter(client=mock_client, model="gpt-4o")
+
+        with pytest.raises(ProviderError, match="rate limited"):
+            await adapter.complete(_make_request())
+
+        assert adapter.check_rate_limit().is_limited is True

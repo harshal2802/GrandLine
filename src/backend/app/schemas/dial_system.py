@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from app.models.enums import CrewRole
 
 
 class ProviderConfig(BaseModel):
@@ -14,6 +17,8 @@ class ProviderConfig(BaseModel):
 
 class CompletionRequest(BaseModel):
     messages: list[dict[str, str]]
+    role: CrewRole
+    voyage_id: uuid.UUID | None = None
     max_tokens: int = 4096
     temperature: float = 1.0
     extra: dict[str, Any] = Field(default_factory=dict)

@@ -1,6 +1,6 @@
 # GrandLine Conventions
 
-**Last updated**: 2026-04-04
+**Last updated**: 2026-04-05
 
 ## Philosophy
 - **Local-first**: Docker Compose is the primary dev environment. Everything runs locally.
@@ -57,9 +57,14 @@ src/
       doctor.py             — QA agent (test writing + validation)
       helmsman.py           — DevOps agent (deployment)
     dial_system/            — LLM gateway
-      router.py             — Provider routing + role mapping
-      failover.py           — Vivre Card checkpoint + provider migration
-      providers/            — Provider adapters (Anthropic, OpenAI, local)
+      router.py             — DialSystemRouter (role routing + failover)
+      factory.py            — Adapter factory (create_adapter, build_router_from_config)
+      rate_limiter.py       — Redis sliding-window rate limiter
+      adapters/             — Provider adapters
+        base.py             — ProviderAdapter ABC + ProviderError
+        anthropic.py        — Anthropic SDK adapter
+        openai.py           — OpenAI SDK adapter
+        ollama.py           — Ollama HTTP adapter (httpx)
     den_den_mushi/          — Message bus (Redis Streams)
     models/                 — SQLAlchemy models
     schemas/                — Pydantic request/response schemas
@@ -166,10 +171,14 @@ src/
 - All actions logged to Ship's Log for full observability
 
 ## Dial System (LLM Gateway)
-- Config-driven: each crew role maps to a provider + model + parameters
-- Provider adapters: Anthropic, OpenAI, local models
-- Failover chain: primary → fallback → park
-- Rate limit awareness: track usage, switch before hitting limits
+- Config-driven: each crew role maps to a provider + model via DialConfig JSONB
+- Provider adapters: `ProviderAdapter` ABC — Anthropic, OpenAI, Ollama implementations
+- Adapter factory: `create_adapter()` creates adapters from strings; `build_router_from_config()` wires the full router from DB config
+- Failover chain: primary → fallback chain → `RuntimeError("All providers exhausted")`
+- Rate limiter: Redis sorted-set sliding window tracking tokens + requests per provider per minute
+- Error handling: SDK errors (`RateLimitError`, `APIError`) caught and re-raised as `ProviderError` for uniform failover
+- SSE streaming: `POST /completions/stream` with `text/event-stream` and `data: {token}\n\n` format
+- Failover applies to both `route()` and `stream()` — identical logic
 - All LLM calls go through the Dial System — no direct provider calls
 
 ## API protocols

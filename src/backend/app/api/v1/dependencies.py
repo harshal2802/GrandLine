@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import JWTError, decode_token
 from app.den_den_mushi.mushi import DenDenMushi
+from app.dial_system.factory import build_router_from_config
+from app.dial_system.rate_limiter import RateLimiter
+from app.dial_system.router import DialSystemRouter
 from app.models import get_db
+from app.models.dial_config import DialConfig
 from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -76,3 +80,20 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_dial_router(
+    voyage_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    mushi: DenDenMushi = Depends(get_den_den_mushi),
+    redis: Redis = Depends(get_redis),
+) -> DialSystemRouter:
+    result = await session.execute(select(DialConfig).where(DialConfig.voyage_id == voyage_id))
+    config = result.scalar_one_or_none()
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dial config not found for this voyage",
+        )
+    rate_limiter = RateLimiter(redis)
+    return build_router_from_config(config, settings, mushi, rate_limiter)

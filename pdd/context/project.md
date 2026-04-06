@@ -1,6 +1,6 @@
 # Project: GrandLine
 
-**Last updated**: 2026-04-04
+**Last updated**: 2026-04-05
 
 ## What we're building
 A web-based multi-agent orchestration platform where a crew of persona-based AI agents voyage together through a structured pipeline to build, test, and deploy software solutions. Themed after One Piece — the crew, the voyage, and the platform vocabulary are all drawn from that world.
@@ -97,10 +97,15 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 - Protected routes: Middleware-level enforcement
 
 ## Dial System (LLM Gateway)
-- Provider-agnostic: Anthropic, OpenAI, local models
-- Config-driven role mapping: each agent persona can be mapped to a specific provider/model
-- Failover: when a provider hits its limit, the system checkpoints agent state (Vivre Card), migrates to fallback providers, or parks non-critical agents
-- No work is lost — ever
+- Provider-agnostic: Anthropic, OpenAI, Ollama (local models)
+- Config-driven role mapping: each agent persona mapped to a provider/model via DialConfig JSONB
+- Adapter pattern: `ProviderAdapter` ABC with `complete()`, `stream()`, `check_rate_limit()`
+- Adapter factory: `create_adapter()` + `build_router_from_config()` — no global instances, created per-request
+- Failover: `DialSystemRouter` checks rate limits, tries primary, falls back through chain on `ProviderError`
+- Failover applies to both `route()` (sync completion) and `stream()` (SSE streaming)
+- Rate limiter: Redis sliding-window sorted sets tracking tokens + requests per provider
+- SSE streaming: `POST /completions/stream` returns `text/event-stream` with `data: {token}\n\n` format
+- `ProviderSwitchedEvent` published via Den Den Mushi on failover
 
 ## Agent Execution
 - Agents work in **real git repos** with **per-agent branches**
@@ -138,7 +143,14 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 - Never lose work — Vivre Card checkpointing is mandatory for provider failover
 
 ## Current state
-Starting from scratch — project scaffolded with PDD structure, no application code yet.
+Phases 1-6 complete. The backend is functional with:
+- **Phase 1-2**: Docker infrastructure, PostgreSQL + Redis, SQLAlchemy models (Voyage, VoyagePlan, Poneglyph, VivreCard, CrewAction, DialConfig)
+- **Phase 3**: Pydantic schemas for all models, DialConfig with JSONB role_mapping/fallback_chain
+- **Phase 4**: JWT auth (register, login, refresh, logout) with default-deny middleware
+- **Phase 5**: Den Den Mushi message bus (Redis Streams) with consumer groups, dead-letter handling, xautoclaim stale recovery
+- **Phase 6**: Dial System LLM gateway — provider adapters (Anthropic, OpenAI, Ollama), adapter factory, role-based routing with failover, Redis sliding-window rate limiter, SSE streaming endpoint
+
+163 unit tests passing, mypy clean, ruff clean. Frontend not yet started.
 
 ## Source directory structure
 All application artifacts live under `src/`:

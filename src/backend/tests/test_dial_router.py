@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.den_den_mushi.mushi import DenDenMushi
-from app.dial_system.adapters.base import ProviderAdapter
+from app.dial_system.adapters.base import ProviderAdapter, ProviderError
+from app.dial_system.rate_limiter import RateLimiter
 from app.dial_system.router import DialSystemRouter
 from app.models.enums import CrewRole
 from app.schemas.dial_system import (
@@ -24,6 +25,7 @@ VOYAGE_ID = uuid.uuid4()
 def _make_request() -> CompletionRequest:
     return CompletionRequest(
         messages=[{"role": "user", "content": "Plan the voyage"}],
+        role=CrewRole.CAPTAIN,
         max_tokens=200,
     )
 
@@ -125,10 +127,10 @@ class TestFailover:
         fallback.complete.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_failover_to_fallback_on_exception(self) -> None:
+    async def test_failover_to_fallback_on_provider_error(self) -> None:
         primary = _make_adapter()
         primary.check_rate_limit.return_value = RateLimitStatus(is_limited=False)
-        primary.complete.side_effect = Exception("Provider down")
+        primary.complete.side_effect = ProviderError("Provider down")
 
         fallback = _make_adapter(result=_make_result(provider="openai", model="gpt-4o"))
 
@@ -209,3 +211,84 @@ class TestFailover:
         await router.route(CrewRole.CAPTAIN, _make_request())
 
         mushi.publish.assert_not_awaited()
+
+
+class TestStreamFailover:
+    @pytest.mark.asyncio
+    async def test_stream_fails_over_on_provider_error(self) -> None:
+        primary = AsyncMock(spec=ProviderAdapter)
+        primary.check_rate_limit.return_value = RateLimitStatus(is_limited=False)
+
+        async def failing_stream(req):
+            raise ProviderError("Stream failed")
+            yield  # make it an async generator  # noqa: E501
+
+        primary.stream = failing_stream
+
+        fallback = AsyncMock(spec=ProviderAdapter)
+        fallback.check_rate_limit.return_value = RateLimitStatus(is_limited=False)
+
+        async def fallback_stream(req):
+            yield "fallback"
+            yield " response"
+
+        fallback.stream = fallback_stream
+
+        mushi = AsyncMock(spec=DenDenMushi)
+
+        router = DialSystemRouter(
+            role_mapping={CrewRole.CAPTAIN: primary},
+            fallback_chains={CrewRole.CAPTAIN: [fallback]},
+            mushi=mushi,
+            voyage_id=VOYAGE_ID,
+        )
+
+        tokens = [t async for t in router.stream(CrewRole.CAPTAIN, _make_request())]
+
+        assert tokens == ["fallback", " response"]
+        mushi.publish.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stream_skips_rate_limited_primary(self) -> None:
+        primary = AsyncMock(spec=ProviderAdapter)
+        primary.check_rate_limit.return_value = RateLimitStatus(is_limited=True)
+
+        fallback = AsyncMock(spec=ProviderAdapter)
+        fallback.check_rate_limit.return_value = RateLimitStatus(is_limited=False)
+
+        async def fallback_stream(req):
+            yield "ok"
+
+        fallback.stream = fallback_stream
+
+        mushi = AsyncMock(spec=DenDenMushi)
+
+        router = DialSystemRouter(
+            role_mapping={CrewRole.CAPTAIN: primary},
+            fallback_chains={CrewRole.CAPTAIN: [fallback]},
+            mushi=mushi,
+            voyage_id=VOYAGE_ID,
+        )
+
+        tokens = [t async for t in router.stream(CrewRole.CAPTAIN, _make_request())]
+
+        assert tokens == ["ok"]
+
+
+class TestRateLimiterIntegration:
+    @pytest.mark.asyncio
+    async def test_records_usage_after_successful_completion(self) -> None:
+        adapter = _make_adapter()
+        rate_limiter = AsyncMock(spec=RateLimiter)
+
+        router = DialSystemRouter(
+            role_mapping={CrewRole.CAPTAIN: adapter},
+            fallback_chains={},
+            mushi=AsyncMock(spec=DenDenMushi),
+            voyage_id=VOYAGE_ID,
+            rate_limiter=rate_limiter,
+        )
+
+        await router.route(CrewRole.CAPTAIN, _make_request())
+
+        rate_limiter.record_usage.assert_awaited_once_with("anthropic", 15)
