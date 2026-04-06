@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 10080  # 7 days
 
+    # LLM Providers (Dial System)
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
