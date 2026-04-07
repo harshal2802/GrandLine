@@ -48,6 +48,10 @@ class ProviderSwitchedEvent(DenDenMushiEvent):
     event_type: Literal["provider_switched"] = "provider_switched"
 
 
+class CheckpointCreatedEvent(DenDenMushiEvent):
+    event_type: Literal["checkpoint_created"] = "checkpoint_created"
+
+
 AnyEvent = Annotated[
     VoyagePlanCreatedEvent
     | PoneglyphDraftedEvent
@@ -55,7 +59,8 @@ AnyEvent = Annotated[
     | CodeGeneratedEvent
     | ValidationPassedEvent
     | DeploymentCompletedEvent
-    | ProviderSwitchedEvent,
+    | ProviderSwitchedEvent
+    | CheckpointCreatedEvent,
     Field(discriminator="event_type"),
 ]
 

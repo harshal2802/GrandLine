@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
 
+    # Vivre Card (State Checkpointing)
+    vivre_card_checkpoint_interval_seconds: int = 300  # 5 minutes
+    vivre_card_cleanup_keep_last_n: int = 10
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
