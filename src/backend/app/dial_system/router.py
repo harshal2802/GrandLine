@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from app.den_den_mushi.constants import stream_key
 from app.den_den_mushi.events import ProviderSwitchedEvent
@@ -23,12 +23,14 @@ class DialSystemRouter:
         mushi: DenDenMushi,
         voyage_id: uuid.UUID,
         rate_limiter: RateLimiter | None = None,
+        on_provider_switch: Callable[[CrewRole, str], Awaitable[None]] | None = None,
     ) -> None:
         self._role_mapping = role_mapping
         self._fallback_chains = fallback_chains
         self._mushi = mushi
         self._voyage_id = voyage_id
         self._rate_limiter = rate_limiter
+        self._on_provider_switch = on_provider_switch
 
     async def _is_rate_limited(self, adapter: ProviderAdapter) -> bool:
         """Check both adapter-level and Redis-level rate limits."""
@@ -76,6 +78,7 @@ class DialSystemRouter:
             if await self._is_rate_limited(fallback):
                 continue
             try:
+                await self._call_switch_hook(role, self._get_provider_name(fallback))
                 result = await fallback.complete(request)
                 if self._rate_limiter:
                     await self._rate_limiter.record_usage(
@@ -109,7 +112,9 @@ class DialSystemRouter:
             if await self._is_rate_limited(fallback):
                 continue
             try:
-                await self._publish_switch_event(role, "fallback")
+                fallback_name = self._get_provider_name(fallback)
+                await self._call_switch_hook(role, fallback_name)
+                await self._publish_switch_event(role, fallback_name)
                 async for token in fallback.stream(request):
                     yield token
                 return
@@ -129,6 +134,15 @@ class DialSystemRouter:
                 await client.close()
             elif client is not None and hasattr(client, "aclose"):
                 await client.aclose()
+
+    async def _call_switch_hook(self, role: CrewRole, new_provider: str) -> None:
+        """Call the on_provider_switch hook if set. Errors are logged but do not block failover."""
+        if self._on_provider_switch is None:
+            return
+        try:
+            await self._on_provider_switch(role, new_provider)
+        except Exception as exc:
+            logger.warning("on_provider_switch hook failed for %s: %s", role.value, exc)
 
     async def _publish_switch_event(self, role: CrewRole, new_provider: str) -> None:
         event = ProviderSwitchedEvent(
