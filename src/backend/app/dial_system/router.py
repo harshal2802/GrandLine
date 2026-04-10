@@ -112,8 +112,9 @@ class DialSystemRouter:
             if await self._is_rate_limited(fallback):
                 continue
             try:
-                await self._call_switch_hook(role, "fallback")
-                await self._publish_switch_event(role, "fallback")
+                fallback_name = self._get_provider_name(fallback)
+                await self._call_switch_hook(role, fallback_name)
+                await self._publish_switch_event(role, fallback_name)
                 async for token in fallback.stream(request):
                     yield token
                 return

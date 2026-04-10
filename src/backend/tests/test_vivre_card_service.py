@@ -95,7 +95,7 @@ class TestRestore:
         mock_result.scalar_one_or_none.return_value = expected_card
         session.execute.return_value = mock_result
 
-        result = await restore(session, card_id)
+        result = await restore(session, card_id, VOYAGE_ID)
 
         assert result.id == card_id
         assert result.state_data == expected_card.state_data
@@ -110,7 +110,7 @@ class TestRestore:
         session.execute.return_value = mock_result
 
         with pytest.raises(VivreCardError) as exc_info:
-            await restore(session, uuid.uuid4())
+            await restore(session, uuid.uuid4(), VOYAGE_ID)
 
         assert exc_info.value.code == "CARD_NOT_FOUND"
         assert exc_info.value.status_code == 404
@@ -205,7 +205,7 @@ class TestDiff:
         mock_result_b.scalar_one_or_none.return_value = card_b
         session.execute.side_effect = [mock_result_a, mock_result_b]
 
-        result = await diff(session, card_a.id, card_b.id)
+        result = await diff(session, card_a.id, card_b.id, VOYAGE_ID)
 
         assert result["added"] == {"output": "done"}
         assert result["removed"] == {}
@@ -225,7 +225,7 @@ class TestDiff:
         mock_result_b.scalar_one_or_none.return_value = card_b
         session.execute.side_effect = [mock_result_a, mock_result_b]
 
-        result = await diff(session, card_a.id, card_b.id)
+        result = await diff(session, card_a.id, card_b.id, VOYAGE_ID)
 
         assert result["added"] == {}
         assert result["removed"] == {"temp": "val"}
@@ -245,7 +245,7 @@ class TestDiff:
         mock_result_b.scalar_one_or_none.return_value = card_b
         session.execute.side_effect = [mock_result_a, mock_result_b]
 
-        result = await diff(session, card_a.id, card_b.id)
+        result = await diff(session, card_a.id, card_b.id, VOYAGE_ID)
 
         assert result["changed"]["step"] == {"before": 1, "after": 3}
         assert result["changed"]["status"] == {"before": "running", "after": "done"}
@@ -265,7 +265,7 @@ class TestDiff:
         mock_result_b.scalar_one_or_none.return_value = card_b
         session.execute.side_effect = [mock_result_a, mock_result_b]
 
-        result = await diff(session, card_a.id, card_b.id)
+        result = await diff(session, card_a.id, card_b.id, VOYAGE_ID)
 
         assert result["added"] == {}
         assert result["removed"] == {}
@@ -281,7 +281,7 @@ class TestDiff:
         session.execute.return_value = mock_result
 
         with pytest.raises(VivreCardError) as exc_info:
-            await diff(session, uuid.uuid4(), uuid.uuid4())
+            await diff(session, uuid.uuid4(), uuid.uuid4(), VOYAGE_ID)
 
         assert exc_info.value.code == "CARD_NOT_FOUND"
 

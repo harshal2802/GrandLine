@@ -38,9 +38,11 @@ async def checkpoint(
     return card
 
 
-async def restore(session: AsyncSession, card_id: uuid.UUID) -> VivreCard:
-    """Fetch a Vivre Card by ID. Raises VivreCardError if not found."""
-    result = await session.execute(select(VivreCard).where(VivreCard.id == card_id))
+async def restore(session: AsyncSession, card_id: uuid.UUID, voyage_id: uuid.UUID) -> VivreCard:
+    """Fetch a Vivre Card by ID, scoped to a voyage. Raises VivreCardError if not found."""
+    result = await session.execute(
+        select(VivreCard).where(VivreCard.id == card_id, VivreCard.voyage_id == voyage_id)
+    )
     card = result.scalar_one_or_none()
     if card is None:
         raise VivreCardError("CARD_NOT_FOUND", "Vivre Card not found", 404)
@@ -77,14 +79,19 @@ async def diff(
     session: AsyncSession,
     card_id_a: uuid.UUID,
     card_id_b: uuid.UUID,
+    voyage_id: uuid.UUID,
 ) -> dict[str, Any]:
-    """Compute a shallow diff between two Vivre Card state snapshots."""
-    result_a = await session.execute(select(VivreCard).where(VivreCard.id == card_id_a))
+    """Compute a shallow diff between two Vivre Card state snapshots, scoped to a voyage."""
+    result_a = await session.execute(
+        select(VivreCard).where(VivreCard.id == card_id_a, VivreCard.voyage_id == voyage_id)
+    )
     card_a = result_a.scalar_one_or_none()
     if card_a is None:
         raise VivreCardError("CARD_NOT_FOUND", f"Vivre Card {card_id_a} not found", 404)
 
-    result_b = await session.execute(select(VivreCard).where(VivreCard.id == card_id_b))
+    result_b = await session.execute(
+        select(VivreCard).where(VivreCard.id == card_id_b, VivreCard.voyage_id == voyage_id)
+    )
     card_b = result_b.scalar_one_or_none()
     if card_b is None:
         raise VivreCardError("CARD_NOT_FOUND", f"Vivre Card {card_id_b} not found", 404)

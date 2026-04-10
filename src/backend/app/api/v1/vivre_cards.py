@@ -100,7 +100,7 @@ async def get_checkpoint(
     voyage: Voyage = Depends(get_authorized_voyage),
 ) -> VivreCardRead:
     try:
-        card = await restore(session, card_id)
+        card = await restore(session, card_id, voyage_id)
     except VivreCardError as exc:
         raise HTTPException(
             status_code=exc.status_code,
@@ -118,7 +118,7 @@ async def diff_checkpoints(
     compare_to: uuid.UUID = Query(...),
 ) -> VivreCardDiff:
     try:
-        result = await diff(session, card_id, compare_to)
+        result = await diff(session, card_id, compare_to, voyage_id)
     except VivreCardError as exc:
         raise HTTPException(
             status_code=exc.status_code,
@@ -139,7 +139,7 @@ async def restore_checkpoint(
     voyage: Voyage = Depends(get_authorized_voyage),
 ) -> VivreCardRestore:
     try:
-        card = await restore(session, card_id)
+        card = await restore(session, card_id, voyage_id)
     except VivreCardError as exc:
         raise HTTPException(
             status_code=exc.status_code,
