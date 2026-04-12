@@ -94,17 +94,28 @@ class GVisorContainerBackend(ExecutionBackend):
                 tty=False,
             )
 
+            stream = exec_obj.start(detach=False)
             timed_out = False
-            output = b""
+            stdout_buf = b""
+            stderr_buf = b""
             start = time.monotonic()
 
+            async def _read_stream() -> None:
+                nonlocal stdout_buf, stderr_buf
+                while True:
+                    msg = await stream.read_out()
+                    if msg is None:
+                        break
+                    if msg.stream == 1:
+                        stdout_buf += msg.data
+                    elif msg.stream == 2:
+                        stderr_buf += msg.data
+
             try:
-                output = await wait_for(
-                    exec_obj.start(detach=True),
-                    timeout=request.timeout_seconds,
-                )
+                await wait_for(_read_stream(), timeout=request.timeout_seconds)
             except TimeoutError:
                 timed_out = True
+                await stream.close()
 
             duration = time.monotonic() - start
 
@@ -113,14 +124,10 @@ class GVisorContainerBackend(ExecutionBackend):
             if exit_code is None:
                 exit_code = -1
 
-            stdout = output.decode(errors="replace") if isinstance(output, bytes) else str(output)
-            # aiodocker detach mode returns combined output; stderr from exit code
-            stderr = "" if exit_code == 0 else stdout
-
             return ExecutionResult(
                 exit_code=exit_code,
-                stdout=stdout,
-                stderr="" if exit_code == 0 else stderr,
+                stdout=stdout_buf.decode(errors="replace"),
+                stderr=stderr_buf.decode(errors="replace"),
                 timed_out=timed_out,
                 duration_seconds=round(duration, 3),
                 sandbox_id=sandbox_id,

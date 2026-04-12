@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +13,39 @@ import pytest
 from app.execution.backend import ExecutionError
 from app.execution.gvisor_backend import GVisorContainerBackend
 from app.schemas.execution import ExecutionRequest
+
+
+@dataclass
+class _FakeMessage:
+    stream: int  # 1=stdout, 2=stderr
+    data: bytes
+
+
+def _mock_stream(stdout: bytes = b"", stderr: bytes = b"") -> MagicMock:
+    """Create a mock Stream that yields messages then returns None."""
+    messages: list[_FakeMessage | None] = []
+    if stdout:
+        messages.append(_FakeMessage(stream=1, data=stdout))
+    if stderr:
+        messages.append(_FakeMessage(stream=2, data=stderr))
+    messages.append(None)  # EOF
+    it = iter(messages)
+    stream = MagicMock()
+    stream.read_out = AsyncMock(side_effect=lambda: next(it))
+    stream.close = AsyncMock()
+    return stream
+
+
+def _timeout_stream() -> MagicMock:
+    """Create a mock Stream whose read_out hangs forever (for timeout tests)."""
+    stream = MagicMock()
+
+    async def _hang() -> None:
+        await asyncio.sleep(3600)
+
+    stream.read_out = AsyncMock(side_effect=_hang)
+    stream.close = AsyncMock()
+    return stream
 
 
 @pytest.fixture
@@ -156,7 +190,7 @@ class TestExecute:
         mock_docker.containers.container.return_value = container
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(return_value=b"hello\n")
+        exec_obj.start = MagicMock(return_value=_mock_stream(stdout=b"hello\n"))
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": 0})
         container.exec = AsyncMock(return_value=exec_obj)
 
@@ -175,7 +209,7 @@ class TestExecute:
         mock_docker.containers.container.return_value = container
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(return_value=b"error\n")
+        exec_obj.start = MagicMock(return_value=_mock_stream(stderr=b"error\n"))
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": 1})
         container.exec = AsyncMock(return_value=exec_obj)
 
@@ -183,7 +217,7 @@ class TestExecute:
         result = await backend.execute("abc123", request)
 
         assert result.exit_code == 1
-        assert result.stderr != ""
+        assert result.stderr == "error\n"
 
     @pytest.mark.asyncio
     async def test_execute_respects_timeout(
@@ -193,7 +227,7 @@ class TestExecute:
         mock_docker.containers.container.return_value = container
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(side_effect=asyncio.TimeoutError)
+        exec_obj.start = MagicMock(return_value=_timeout_stream())
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": -1})
         container.exec = AsyncMock(return_value=exec_obj)
 
@@ -211,7 +245,7 @@ class TestExecute:
         container.put_archive = AsyncMock()
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(return_value=b"ok")
+        exec_obj.start = MagicMock(return_value=_mock_stream(stdout=b"ok"))
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": 0})
         container.exec = AsyncMock(return_value=exec_obj)
 
@@ -232,7 +266,7 @@ class TestExecute:
         mock_docker.containers.container.return_value = container
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(return_value=b"1")
+        exec_obj.start = MagicMock(return_value=_mock_stream(stdout=b"1"))
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": 0})
         container.exec = AsyncMock(return_value=exec_obj)
 
@@ -254,7 +288,7 @@ class TestExecute:
         mock_docker.containers.container.return_value = container
 
         exec_obj = AsyncMock()
-        exec_obj.start = AsyncMock(return_value=b"")
+        exec_obj.start = MagicMock(return_value=_mock_stream())
         exec_obj.inspect = AsyncMock(return_value={"ExitCode": 0})
         container.exec = AsyncMock(return_value=exec_obj)
 
