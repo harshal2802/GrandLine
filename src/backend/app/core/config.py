@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     vivre_card_checkpoint_interval_seconds: int = 300  # 5 minutes
     vivre_card_cleanup_keep_last_n: int = 10
 
+    # Execution Service (Sandbox)
+    execution_backend: str = "gvisor"
+    execution_image: str = "python:3.13-slim"
+    execution_memory_limit: str = "256m"
+    execution_cpu_quota: int = 50000
+    execution_cpu_period: int = 100000
+    execution_default_timeout: int = 30
+    execution_network_enabled: bool = False
+    execution_gvisor_runtime: str = "runsc"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
