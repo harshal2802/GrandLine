@@ -257,6 +257,22 @@ class TestErrorMapping:
         assert exc_info.value.status_code == 502
 
     @pytest.mark.asyncio
+    async def test_disallowed_host_400(self) -> None:
+        from app.api.v1.git import clone_repo
+        from app.schemas.git import GitCloneRequest
+
+        svc = _mock_git_service()
+        svc.clone_repo.side_effect = GitError(
+            "DISALLOWED_HOST: 'evil.com' is not an allowed git host"
+        )
+        body = GitCloneRequest(repo_url="https://evil.com/repo.git")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await clone_repo(VOYAGE_ID, body, _mock_user(), _mock_voyage(), svc)
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_unauthorized_401(self) -> None:
         from app.api.v1.dependencies import get_current_user
 

@@ -46,6 +46,7 @@ def mock_settings() -> MagicMock:
     s.git_default_branch = "main"
     s.git_author_name = "GrandLine Crew"
     s.git_author_email = "crew@grandline.dev"
+    s.git_allowed_hosts = None  # use default ALLOWED_GIT_HOSTS
     return s
 
 
@@ -97,6 +98,24 @@ class TestCloneRepo:
         with pytest.raises(GitError, match="REPO_ALREADY_CLONED"):
             await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
 
+    @pytest.mark.asyncio
+    async def test_clone_rejects_disallowed_host(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        with pytest.raises(GitError, match="DISALLOWED_HOST"):
+            await service.clone_repo(VOYAGE_ID, USER_ID, "https://evil.com/repo.git")
+        mock_backend.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clone_accepts_allowed_hosts(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        for host in ("github.com", "gitlab.com", "bitbucket.org"):
+            svc = GitService(mock_backend, service._settings)
+            vid = uuid.uuid4()
+            result = await svc.clone_repo(vid, USER_ID, f"https://{host}/owner/repo.git")
+            assert result.sandbox_id == "sandbox-git-1"
+
 
 class TestCreateBranch:
     @pytest.mark.asyncio
@@ -124,6 +143,18 @@ class TestCreateBranch:
         cmd = mock_backend.execute.call_args.args[1].command
         assert "checkout -b" in cmd
         assert f"agent/shipwright/{VOYAGE_HEX8}" in cmd
+
+    @pytest.mark.asyncio
+    async def test_branches_from_remote_tracking(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+
+        await service.create_branch(VOYAGE_ID, USER_ID, "shipwright", "main")
+
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "origin/main" in cmd
 
 
 class TestListBranches:

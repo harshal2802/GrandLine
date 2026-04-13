@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 REPO_PATH = "/workspace/repo"
 BRANCH_NAME_RE = re.compile(r"^[a-zA-Z0-9/_.\-]+$")
+ALLOWED_GIT_HOSTS = frozenset({"github.com", "gitlab.com", "bitbucket.org"})
 
 
 class GitError(Exception):
@@ -39,6 +40,14 @@ def _branch_name(crew_member: str, voyage_id: uuid.UUID) -> str:
 def _validate_branch_component(value: str) -> None:
     if not BRANCH_NAME_RE.match(value):
         raise GitError(f"INVALID_BRANCH_NAME: {value!r} contains invalid characters")
+
+
+def _validate_repo_host(repo_url: str, allowed_hosts: frozenset[str]) -> None:
+    """Reject repo URLs whose host is not in the allowlist."""
+    parsed = urlparse(repo_url)
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in allowed_hosts:
+        raise GitError(f"DISALLOWED_HOST: {hostname!r} is not an allowed git host")
 
 
 def _inject_token(repo_url: str, token: str) -> str:
@@ -88,6 +97,10 @@ class GitService:
         if voyage_id in self._repos:
             raise GitError("REPO_ALREADY_CLONED")
 
+        allowed = getattr(self._settings, "git_allowed_hosts", None)
+        allowed_hosts = frozenset(allowed) if allowed else ALLOWED_GIT_HOSTS
+        _validate_repo_host(repo_url, allowed_hosts)
+
         sandbox_id = await self._backend.create(user_id)
 
         try:
@@ -133,8 +146,8 @@ class GitService:
         await self._run(
             sandbox_id,
             f"cd {REPO_PATH} && git fetch origin"
-            f" && git checkout {shlex.quote(base_branch)}"
-            f" && git checkout -b {shlex.quote(branch)}",
+            f" && git checkout -b {shlex.quote(branch)}"
+            f" origin/{shlex.quote(base_branch)}",
         )
 
         return GitBranchInfo(name=branch, is_current=True)

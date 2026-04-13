@@ -35,6 +35,11 @@ def _handle_git_error(exc: GitError) -> HTTPException:
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": {"code": msg.split(":")[0].strip(), "message": msg}},
         )
+    if "DISALLOWED_HOST" in msg:
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "DISALLOWED_HOST", "message": msg}},
+        )
     if "NO_TARGET_REPO" in msg or "INVALID_BRANCH_NAME" in msg:
         return HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
