@@ -20,6 +20,7 @@ from app.models.dial_config import DialConfig
 from app.models.user import User
 from app.models.voyage import Voyage
 from app.services.execution_service import ExecutionService
+from app.services.git_service import GitService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -103,6 +104,11 @@ async def get_authorized_voyage(
 
 def get_execution_service(request: Request) -> ExecutionService:
     svc: ExecutionService = request.app.state.execution_service
+    return svc
+
+
+def get_git_service(request: Request) -> GitService:
+    svc: GitService = request.app.state.git_service
     return svc
 
 

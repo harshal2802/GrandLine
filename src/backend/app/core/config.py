@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     execution_network_enabled: bool = False
     execution_gvisor_runtime: str = "runsc"
 
+    # Git Integration
+    git_sandbox_image: str = "bitnami/git:latest"
+    git_sandbox_memory_limit: str = "512m"
+    git_default_branch: str = "main"
+    git_author_name: str = "GrandLine Crew"
+    git_author_email: str = "crew@grandline.dev"
+    github_api_token: str = ""
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
