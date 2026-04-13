@@ -9,6 +9,8 @@ from app.api.v1.router import v1_router
 from app.core.config import settings
 from app.core.middleware import DefaultDenyMiddleware
 from app.den_den_mushi.mushi import DenDenMushi
+from app.execution.factory import create_backend
+from app.services.execution_service import ExecutionService
 
 
 @asynccontextmanager
@@ -16,7 +18,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pool = ConnectionPool.from_url(settings.redis_url, decode_responses=True)
     app.state.redis_pool = pool
     app.state.den_den_mushi = DenDenMushi(Redis(connection_pool=pool))
+
+    backend = create_backend(settings)
+    app.state.execution_service = ExecutionService(backend)
+
     yield
+
+    await app.state.execution_service.cleanup_all()
+    await backend.close()
     await pool.aclose()
 
 

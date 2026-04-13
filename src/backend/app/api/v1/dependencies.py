@@ -19,6 +19,7 @@ from app.models import get_db
 from app.models.dial_config import DialConfig
 from app.models.user import User
 from app.models.voyage import Voyage
+from app.services.execution_service import ExecutionService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -98,6 +99,11 @@ async def get_authorized_voyage(
             detail="Voyage not found",
         )
     return voyage
+
+
+def get_execution_service(request: Request) -> ExecutionService:
+    svc: ExecutionService = request.app.state.execution_service
+    return svc
 
 
 async def get_dial_router(
