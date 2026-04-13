@@ -149,7 +149,9 @@ class TestCommit:
     async def test_stages_and_commits(self, service: GitService, mock_backend: AsyncMock) -> None:
         await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
         mock_backend.execute.reset_mock()
-        mock_backend.execute.return_value = _exec_result(stdout="abc123def456\n")
+        mock_backend.execute.return_value = _exec_result(
+            stdout="abc123def456 abc123d 2026-04-12T10:00:00+00:00\n"
+        )
 
         await service.commit(VOYAGE_ID, USER_ID, "feat: add login", "shipwright")
 
@@ -165,14 +167,16 @@ class TestCommit:
     ) -> None:
         await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
         mock_backend.execute.reset_mock()
-        mock_backend.execute.return_value = _exec_result(stdout="abc123def456\n")
+        mock_backend.execute.return_value = _exec_result(
+            stdout="abc123def456 abc123d 2026-04-12T10:00:00+00:00\n"
+        )
 
         files = {"main.py": "print('hello')"}
         await service.commit(VOYAGE_ID, USER_ID, "feat: add main", "shipwright", files)
 
-        # The files should be passed in the ExecutionRequest
+        # Files should be prefixed with repo/ for put_archive at /workspace
         file_inject_call = mock_backend.execute.call_args_list[0]
-        assert file_inject_call.args[1].files == files
+        assert file_inject_call.args[1].files == {"repo/main.py": "print('hello')"}
 
 
 class TestPush:
@@ -273,8 +277,12 @@ class TestGetLog:
         await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
         mock_backend.execute.reset_mock()
         mock_backend.execute.return_value = _exec_result(
-            stdout="abc123def456|abc123d|feat: add login|shipwright|2026-04-12T10:00:00+00:00\n"
-            "def789abc012|def789a|fix: typo|doctor|2026-04-12T09:00:00+00:00\n"
+            stdout=(
+                "abc123def456\x00abc123d\x00feat: add login"
+                "\x00shipwright\x002026-04-12T10:00:00+00:00\n"
+                "def789abc012\x00def789a\x00fix: typo"
+                "\x00doctor\x002026-04-12T09:00:00+00:00\n"
+            )
         )
 
         log = await service.get_log(VOYAGE_ID, USER_ID, "main", limit=20)
@@ -384,3 +392,44 @@ class TestBranchNameValidation:
 
         with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
             await service.create_branch(VOYAGE_ID, USER_ID, "; rm -rf /", "main")
+
+    @pytest.mark.asyncio
+    async def test_push_validates_branch(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.push(VOYAGE_ID, USER_ID, "; rm -rf /")
+
+    @pytest.mark.asyncio
+    async def test_get_log_validates_branch(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.get_log(VOYAGE_ID, USER_ID, "$(whoami)")
+
+    @pytest.mark.asyncio
+    async def test_check_conflicts_validates_branches(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.check_conflicts(VOYAGE_ID, USER_ID, "; cat /etc/passwd", "main")
+
+
+class TestInjectToken:
+    def test_preserves_port(self) -> None:
+        from app.services.git_service import _inject_token
+
+        result = _inject_token("https://github.example.com:8443/owner/repo.git", "tok123")
+        assert result == "https://x-access-token:tok123@github.example.com:8443/owner/repo.git"
+
+    def test_standard_url(self) -> None:
+        from app.services.git_service import _inject_token
+
+        result = _inject_token("https://github.com/owner/repo.git", "tok123")
+        assert result == "https://x-access-token:tok123@github.com/owner/repo.git"

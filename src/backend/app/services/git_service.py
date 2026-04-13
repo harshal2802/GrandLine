@@ -44,7 +44,9 @@ def _validate_branch_component(value: str) -> None:
 def _inject_token(repo_url: str, token: str) -> str:
     """Rewrite HTTPS URL to include authentication token."""
     parsed = urlparse(repo_url)
-    return f"https://x-access-token:{token}@{parsed.hostname}{parsed.path}"
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"https://x-access-token:{token}@{host}{port}{parsed.path}"
 
 
 def _parse_owner_repo(repo_url: str) -> str:
@@ -87,18 +89,29 @@ class GitService:
             raise GitError("REPO_ALREADY_CLONED")
 
         sandbox_id = await self._backend.create(user_id)
+
+        try:
+            token = self._settings.github_api_token
+            auth_url = _inject_token(repo_url, token) if token else repo_url
+
+            await self._run(sandbox_id, f"git clone {shlex.quote(auth_url)} {REPO_PATH}")
+            author_name = shlex.quote(self._settings.git_author_name)
+            author_email = shlex.quote(self._settings.git_author_email)
+            await self._run(
+                sandbox_id,
+                f"cd {REPO_PATH} && git config user.name {author_name}"
+                f" && git config user.email {author_email}",
+            )
+        except (GitError, Exception):
+            # Rollback: destroy sandbox so retry doesn't hit REPO_ALREADY_CLONED
+            try:
+                await self._backend.destroy(sandbox_id)
+            except Exception:
+                logger.warning("Failed to destroy sandbox %s during clone rollback", sandbox_id)
+            raise
+
         self._repos[voyage_id] = sandbox_id
         self._repo_urls[voyage_id] = repo_url
-
-        token = self._settings.github_api_token
-        auth_url = _inject_token(repo_url, token) if token else repo_url
-
-        await self._run(sandbox_id, f"git clone {shlex.quote(auth_url)} {REPO_PATH}")
-        await self._run(
-            sandbox_id,
-            f"cd {REPO_PATH} && git config user.name {shlex.quote(self._settings.git_author_name)}"
-            f" && git config user.email {shlex.quote(self._settings.git_author_email)}",
-        )
 
         return GitRepoInfo(
             sandbox_id=sandbox_id,
@@ -156,12 +169,13 @@ class GitService:
         sandbox_id = self._get_sandbox(voyage_id)
 
         if files:
+            # put_archive targets /workspace, so prefix paths with repo/
+            prefixed = {f"repo/{path}": content for path, content in files.items()}
             await self._backend.execute(
                 sandbox_id,
                 ExecutionRequest(
                     command=f"cd {REPO_PATH} && echo 'files injected'",
-                    files=files,
-                    working_dir=REPO_PATH,
+                    files=prefixed,
                 ),
             )
 
@@ -174,20 +188,23 @@ class GitService:
 
         stdout = await self._run(
             sandbox_id,
-            f"cd {REPO_PATH} && git rev-parse HEAD",
+            f"cd {REPO_PATH} && git log -1 --format='%H %h %aI'",
         )
-        sha = stdout.strip()
-        short_sha = sha[:7]
+        parts = stdout.strip().split(" ", 2)
+        sha = parts[0]
+        short_sha = parts[1] if len(parts) > 1 else sha[:7]
+        timestamp = parts[2] if len(parts) > 2 else ""
 
         return GitCommitInfo(
             sha=sha,
             short_sha=short_sha,
             message=message,
             author=crew_member,
-            timestamp="",
+            timestamp=timestamp,
         )
 
     async def push(self, voyage_id: uuid.UUID, user_id: uuid.UUID, branch: str) -> GitPushInfo:
+        _validate_branch_component(branch)
         sandbox_id = self._get_sandbox(voyage_id)
 
         await self._run(
@@ -247,12 +264,13 @@ class GitService:
         branch: str,
         limit: int = 20,
     ) -> list[GitCommitInfo]:
+        _validate_branch_component(branch)
         sandbox_id = self._get_sandbox(voyage_id)
 
         stdout = await self._run(
             sandbox_id,
             f"cd {REPO_PATH} && git log {shlex.quote(branch)}"
-            f" -{limit} --format='%H|%h|%s|%an|%aI'",
+            f" -{limit} --format='%H%x00%h%x00%s%x00%an%x00%aI'",
         )
 
         entries: list[GitCommitInfo] = []
@@ -260,7 +278,7 @@ class GitService:
             line = line.strip()
             if not line:
                 continue
-            parts = line.split("|", 4)
+            parts = line.split("\x00", 4)
             if len(parts) < 5:
                 continue
             entries.append(
@@ -282,6 +300,8 @@ class GitService:
         branch: str,
         target: str,
     ) -> GitConflictInfo:
+        _validate_branch_component(branch)
+        _validate_branch_component(target)
         sandbox_id = self._get_sandbox(voyage_id)
 
         await self._run(sandbox_id, f"cd {REPO_PATH} && git fetch origin")

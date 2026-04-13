@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.api.v1.dependencies import get_authorized_voyage, get_current_user, get_git_service
 from app.models.user import User
@@ -155,7 +155,7 @@ async def create_pull_request(
 async def get_log(
     voyage_id: uuid.UUID,
     branch: str = "main",
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=100),
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
     git_service: GitService = Depends(get_git_service),
