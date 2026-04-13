@@ -80,7 +80,7 @@ class TestExecuteEndpoint:
         assert call_args[0][0] == USER_ID
 
     @pytest.mark.asyncio
-    async def test_execute_error_raises_http(self) -> None:
+    async def test_execute_error_raises_http_500(self) -> None:
         from app.api.v1.execution import execute_code
 
         svc = _mock_exec_service()
@@ -91,6 +91,32 @@ class TestExecuteEndpoint:
             await execute_code(VOYAGE_ID, body, _mock_user(), _mock_voyage(), svc)
 
         assert exc_info.value.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_execute_invalid_path_returns_400(self) -> None:
+        from app.api.v1.execution import execute_code
+
+        svc = _mock_exec_service()
+        svc.run.side_effect = ExecutionError("Invalid file path: path traversal detected")
+        body = ExecutionRequest(command="echo hello")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await execute_code(VOYAGE_ID, body, _mock_user(), _mock_voyage(), svc)
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_execute_file_too_large_returns_400(self) -> None:
+        from app.api.v1.execution import execute_code
+
+        svc = _mock_exec_service()
+        svc.run.side_effect = ExecutionError("File too large: big.txt")
+        body = ExecutionRequest(command="echo hello")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await execute_code(VOYAGE_ID, body, _mock_user(), _mock_voyage(), svc)
+
+        assert exc_info.value.status_code == 400
 
 
 class TestSandboxStatusEndpoint:

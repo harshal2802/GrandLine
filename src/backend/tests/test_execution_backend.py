@@ -388,3 +388,48 @@ class TestParseMemory:
         from app.execution.gvisor_backend import _parse_memory
 
         assert _parse_memory("1g") == 1073741824
+
+    def test_parse_memory_invalid_suffix_raises(self) -> None:
+        from app.execution.gvisor_backend import _parse_memory
+
+        with pytest.raises(ValueError, match="Invalid memory limit suffix"):
+            _parse_memory("256x")
+
+    def test_parse_memory_empty_raises(self) -> None:
+        from app.execution.gvisor_backend import _parse_memory
+
+        with pytest.raises(ValueError, match="Empty memory limit"):
+            _parse_memory("")
+
+    def test_parse_memory_non_numeric_raises(self) -> None:
+        from app.execution.gvisor_backend import _parse_memory
+
+        with pytest.raises(ValueError):
+            _parse_memory("abcm")
+
+
+class TestBuildTar:
+    def test_rejects_path_traversal(self) -> None:
+        from app.execution.gvisor_backend import _build_tar
+
+        with pytest.raises(ExecutionError, match="path traversal"):
+            _build_tar({"../etc/passwd": "data"})
+
+    def test_rejects_absolute_path(self) -> None:
+        from app.execution.gvisor_backend import _build_tar
+
+        with pytest.raises(ExecutionError, match="absolute paths not allowed"):
+            _build_tar({"/etc/passwd": "data"})
+
+    def test_rejects_file_too_large(self) -> None:
+        from app.execution.gvisor_backend import MAX_FILE_SIZE, _build_tar
+
+        with pytest.raises(ExecutionError, match="File too large"):
+            _build_tar({"big.txt": "x" * (MAX_FILE_SIZE + 1)})
+
+    def test_accepts_nested_path(self) -> None:
+        from app.execution.gvisor_backend import _build_tar
+
+        result = _build_tar({"src/main.py": "print('hi')"})
+        assert isinstance(result, bytes)
+        assert len(result) > 0

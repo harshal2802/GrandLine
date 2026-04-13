@@ -95,3 +95,16 @@ class TestSandboxStatusFields:
         assert status.state == "running"
         assert status.user_id == uid
         assert status.created_at == now
+
+    def test_state_accepts_valid_values(self) -> None:
+        uid = uuid.uuid4()
+        now = datetime.now(UTC)
+        for valid_state in ("running", "idle", "destroyed"):
+            s = SandboxStatus(sandbox_id="c1", state=valid_state, user_id=uid, created_at=now)
+            assert s.state == valid_state
+
+    def test_state_rejects_invalid_value(self) -> None:
+        uid = uuid.uuid4()
+        now = datetime.now(UTC)
+        with pytest.raises(ValidationError):
+            SandboxStatus(sandbox_id="c1", state="unknown", user_id=uid, created_at=now)

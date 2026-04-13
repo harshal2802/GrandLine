@@ -30,3 +30,6 @@ class ExecutionBackend(ABC):
     async def status(self, sandbox_id: str) -> SandboxStatus:
         """Query sandbox state."""
         ...
+
+    async def close(self) -> None:
+        """Release resources (e.g. Docker client session)."""

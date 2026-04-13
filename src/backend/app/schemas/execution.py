@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,6 @@ class ExecutionResult(BaseModel):
 
 class SandboxStatus(BaseModel):
     sandbox_id: str
-    state: str
+    state: Literal["running", "idle", "destroyed"]
     user_id: uuid.UUID
     created_at: datetime

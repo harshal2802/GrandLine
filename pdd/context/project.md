@@ -1,6 +1,6 @@
 # Project: GrandLine
 
-**Last updated**: 2026-04-05
+**Last updated**: 2026-04-12
 
 ## What we're building
 A web-based multi-agent orchestration platform where a crew of persona-based AI agents voyage together through a structured pipeline to build, test, and deploy software solutions. Themed after One Piece — the crew, the voyage, and the platform vocabulary are all drawn from that world.
@@ -143,14 +143,16 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 - Never lose work — Vivre Card checkpointing is mandatory for provider failover
 
 ## Current state
-Phases 1-6 complete. The backend is functional with:
+Phases 1-8 complete. The backend is functional with:
 - **Phase 1-2**: Docker infrastructure, PostgreSQL + Redis, SQLAlchemy models (Voyage, VoyagePlan, Poneglyph, VivreCard, CrewAction, DialConfig)
 - **Phase 3**: Pydantic schemas for all models, DialConfig with JSONB role_mapping/fallback_chain
 - **Phase 4**: JWT auth (register, login, refresh, logout) with default-deny middleware
 - **Phase 5**: Den Den Mushi message bus (Redis Streams) with consumer groups, dead-letter handling, xautoclaim stale recovery
 - **Phase 6**: Dial System LLM gateway — provider adapters (Anthropic, OpenAI, Ollama), adapter factory, role-based routing with failover, Redis sliding-window rate limiter, SSE streaming endpoint
+- **Phase 7**: Vivre Card state checkpointing — service, API, and Dial System hook for provider failover
+- **Phase 8**: Execution Service — containerized sandbox with gVisor/Docker backend (aiodocker), swappable ExecutionBackend ABC, per-user sandbox lifecycle, path traversal sanitization, file size limits, app lifespan wiring
 
-163 unit tests passing, mypy clean, ruff clean. Frontend not yet started.
+Frontend not yet started.
 
 ## Source directory structure
 All application artifacts live under `src/`:
@@ -161,6 +163,7 @@ src/
     api/            — Route handlers (REST, SSE, WebSocket)
     crew/           — Agent persona definitions (Captain, Navigator, etc.)
     dial_system/    — LLM gateway, provider routing, failover
+    execution/      — Sandboxed code execution backends (gVisor/Docker)
     services/       — Business logic layer
     models/         — SQLAlchemy models (including Vivre Card state)
   shared/           — Shared types, schemas, constants

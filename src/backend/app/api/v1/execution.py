@@ -30,9 +30,15 @@ async def execute_code(
     try:
         return await execution_service.run(user.id, body)
     except ExecutionError as exc:
+        msg = str(exc)
+        if "Invalid file path" in msg or "File too large" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "INVALID_REQUEST", "message": msg}},
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": {"code": "EXECUTION_ERROR", "message": str(exc)}},
+            detail={"error": {"code": "EXECUTION_ERROR", "message": msg}},
         ) from exc
 
 

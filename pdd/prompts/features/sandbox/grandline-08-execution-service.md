@@ -2,13 +2,13 @@
 
 **File**: pdd/prompts/features/sandbox/grandline-08-execution-service.md
 **Created**: 2026-04-09
-**Updated**: 2026-04-09
+**Updated**: 2026-04-12
 **Depends on**: Phase 1 (Docker infrastructure), Phase 3 (CrewAction model)
 **Project type**: Backend (FastAPI + Docker + aiodocker)
 
 ## Context
 
-GrandLine is a One Piece-themed multi-agent orchestration platform. Phases 1-7 delivered Docker infrastructure, database models, JWT auth, the Den Den Mushi message bus, the Dial System LLM gateway, and Vivre Card state checkpointing. 205 tests passing, mypy clean, ruff clean.
+GrandLine is a One Piece-themed multi-agent orchestration platform. Phases 1-7 delivered Docker infrastructure, database models, JWT auth, the Den Den Mushi message bus, the Dial System LLM gateway, and Vivre Card state checkpointing.
 
 Crew agents (Shipwrights, Doctor, Helmsman) generate and execute untrusted code. This code must never run on the host. The Execution Service is the security boundary — it runs all agent-generated code inside isolated containers with gVisor runtime, resource limits, and no network access. The architecture decision mandates a swappable `ExecutionBackend` interface so the sandbox implementation can evolve (gVisor → Firecracker → Wasm) without changing the calling code.
 
@@ -37,7 +37,7 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 
    - `SandboxStatus`:
      - `sandbox_id: str`
-     - `state: str` — one of: "running", "idle", "destroyed"
+     - `state: Literal["running", "idle", "destroyed"]` — enforced by Pydantic, rejects invalid values
      - `user_id: uuid.UUID`
      - `created_at: datetime`
 
@@ -77,15 +77,19 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
      - Wrap Docker errors in `ExecutionError`
 
    - `execute(sandbox_id, request)`:
-     - If `request.files` is non-empty: create a tar archive in memory from the files dict and inject via `put_archive("/workspace")`
-     - Create exec instance: `exec_create(sandbox_id, cmd=["sh", "-c", request.command], workdir=request.working_dir, environment=[f"{k}={v}" for k, v in request.environment.items()])`
-     - Start exec and capture output with `exec_start()`
-     - Implement timeout using `asyncio.wait_for()` with `request.timeout_seconds`
-       - On `asyncio.TimeoutError`: exec may still be running — inspect exec, set `timed_out=True`
-     - Inspect exec to get exit code: `exec_inspect()` → `ExitCode`
-     - Split output into stdout/stderr (exec_start returns combined — use `Tty=False` and `demux=True` for separation)
+     - If `request.files` is non-empty: validate paths via `_validate_file_path()`, check sizes against `MAX_FILE_SIZE`, create a tar archive in memory, and inject via `put_archive("/workspace")`
+     - Create exec instance: `container.exec(cmd=["sh", "-c", request.command], workdir=request.working_dir, environment=[f"{k}={v}" for k, v in request.environment.items()], tty=False)`
+     - Start exec with `exec_obj.start(detach=False)` — returns a `Stream` object (sync call, NOT async)
+     - Read output via `stream.read_out()` loop: `msg.stream == 1` → stdout, `msg.stream == 2` → stderr, `None` → EOF
+     - Wrap the read loop in `asyncio.wait_for()` with `request.timeout_seconds` for timeout enforcement
+       - On `TimeoutError`: close the stream, set `timed_out=True`
+     - Inspect exec to get exit code: `exec_obj.inspect()` → `ExitCode`
      - Track duration with `time.monotonic()` before/after
      - Return `ExecutionResult`
+     - **Important aiodocker API notes**:
+       - `exec.start(detach=True)` fires and forgets — no output, no blocking. Must use `detach=False`.
+       - `containers.container()` is **sync**, `container.exec/show/kill/delete/put_archive/start` are **async**
+       - `exec.start(detach=False)` is **sync** (returns Stream), `stream.read_out()` is **async**
 
    - `destroy(sandbox_id)`:
      - Get container: `docker.containers.container(sandbox_id)`
@@ -105,7 +109,11 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 
    - `close()`: Close the aiodocker client session
 
-   **Memory limit parsing**: `_parse_memory("256m")` → `268435456` bytes. Support `m` (MiB) and `g` (GiB) suffixes.
+   **Memory limit parsing**: `_parse_memory("256m")` → `268435456` bytes. Support `m` (MiB) and `g` (GiB) suffixes. Validates input: raises `ValueError` for empty strings, invalid suffixes (e.g. `"256x"`), and non-numeric values (e.g. `"abcm"`).
+
+   **File size limit**: `MAX_FILE_SIZE = 1_048_576` (1 MiB). Each file in `request.files` is checked before tar injection; exceeding the limit raises `ExecutionError`.
+
+   **Path traversal sanitization**: `_validate_file_path()` rejects absolute paths and `..` components in file paths before tar archive creation, raising `ExecutionError`.
 
 4. **ExecutionService** (`app/services/execution_service.py`):
 
@@ -162,7 +170,9 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
      - Requires auth (`get_current_user`) + voyage ownership (`get_authorized_voyage`)
      - Sets `user_id` from the authenticated user — NOT from request body
      - Calls `execution_service.run(user_id, request)`
-     - On `ExecutionError`: raise HTTPException with standard error shape
+     - Error differentiation:
+       - `ExecutionError` with "Invalid file path" or "File too large" → **400** `INVALID_REQUEST`
+       - Other `ExecutionError` → **500** `EXECUTION_ERROR`
 
    - `GET /api/v1/sandbox/status` → `SandboxStatus`:
      - Requires auth (`get_current_user`)
@@ -180,6 +190,11 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
      - Returns the `ExecutionService` singleton
 
    Wire into `app/api/v1/router.py`.
+
+   **App lifespan wiring** (`app/main.py`):
+   - In the `lifespan()` context manager, create the backend via `create_backend(settings)` and wrap it in `ExecutionService(backend)`
+   - Set `app.state.execution_service = ExecutionService(backend)`
+   - On shutdown: `await app.state.execution_service.cleanup_all()` then `await backend.close()`
 
 ## Input
 
@@ -225,6 +240,12 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 - `get_or_create_sandbox()` when tracked sandbox was killed externally → detect via status check, recreate
 - `cleanup_all()` with some containers already removed → log and continue
 - `files` dict with nested paths (e.g., `"src/main.py"`) → tar archive preserves directory structure
+- `files` dict with `../` traversal paths → rejected by `_validate_file_path()` before tar creation
+- `files` dict with absolute paths (e.g., `/etc/passwd`) → rejected by `_validate_file_path()`
+- `files` dict with file exceeding `MAX_FILE_SIZE` (1 MiB) → rejected before tar creation
+- Invalid memory limit suffix (e.g., `"256x"`) → `_parse_memory` raises `ValueError`
+- Empty memory limit string → `_parse_memory` raises `ValueError`
+- Non-numeric memory value (e.g., `"abcm"`) → `_parse_memory` raises `ValueError`
 - Memory limit exceeded by running process → container OOM-kills the process, captured in exit code
 
 ## Test Plan
@@ -235,6 +256,8 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 - `test_execution_request_timeout_range` — rejects timeout < 1 or > 300
 - `test_execution_result_fields` — all fields present
 - `test_sandbox_status_fields` — all fields present
+- `test_sandbox_status_state_accepts_valid_values` — "running", "idle", "destroyed" accepted
+- `test_sandbox_status_state_rejects_invalid_value` — "unknown" → ValidationError
 
 ### tests/test_execution_backend.py (mocked aiodocker)
 - `test_create_sets_gvisor_runtime` — container config includes runtime=runsc
@@ -256,6 +279,13 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 - `test_status_not_found_raises` — missing container → ExecutionError
 - `test_parse_memory_megabytes` — "256m" → 268435456
 - `test_parse_memory_gigabytes` — "1g" → 1073741824
+- `test_parse_memory_invalid_suffix_raises` — "256x" → ValueError
+- `test_parse_memory_empty_raises` — "" → ValueError
+- `test_parse_memory_non_numeric_raises` — "abcm" → ValueError
+- `test_build_tar_rejects_path_traversal` — "../etc/passwd" → ExecutionError
+- `test_build_tar_rejects_absolute_path` — "/etc/passwd" → ExecutionError
+- `test_build_tar_rejects_file_too_large` — exceeds MAX_FILE_SIZE → ExecutionError
+- `test_build_tar_accepts_nested_path` — "src/main.py" → valid tar bytes
 
 ### tests/test_execution_service.py (mocked backend)
 - `test_run_creates_sandbox_and_executes` — happy path
@@ -278,3 +308,5 @@ Implement the Execution Service with a swappable backend and Docker + gVisor v1 
 - `test_destroy_sandbox_204` — DELETE returns 204
 - `test_destroy_sandbox_not_found` — 404 when no sandbox
 - `test_execute_unauthorized_401` — no token → 401
+- `test_execute_invalid_path_returns_400` — path traversal error → 400 INVALID_REQUEST
+- `test_execute_file_too_large_returns_400` — file size error → 400 INVALID_REQUEST

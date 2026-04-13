@@ -20,14 +20,36 @@ from app.schemas.execution import ExecutionRequest, ExecutionResult, SandboxStat
 logger = logging.getLogger(__name__)
 
 
+MAX_FILE_SIZE = 1_048_576  # 1 MiB per injected file
+
+
 def _parse_memory(value: str) -> int:
     """Parse memory limit string to bytes. Supports 'm' (MiB) and 'g' (GiB)."""
     value = value.strip().lower()
-    if value.endswith("m"):
-        return int(value[:-1]) * 1024 * 1024
-    if value.endswith("g"):
-        return int(value[:-1]) * 1024 * 1024 * 1024
+    if not value:
+        raise ValueError("Empty memory limit")
+    suffix = value[-1]
+    if suffix in ("m", "g"):
+        numeric = value[:-1]
+        if not numeric:
+            raise ValueError(f"Invalid memory limit: {value!r}")
+        n = int(numeric)  # raises ValueError for non-numeric
+        return n * 1024 * 1024 * (1024 if suffix == "g" else 1)
+    if not value.isdigit():
+        raise ValueError(f"Invalid memory limit suffix: {value!r}")
     return int(value)
+
+
+def _validate_file_path(path: str) -> None:
+    """Reject paths that escape the working directory."""
+    from pathlib import PurePosixPath
+
+    if not path or path.startswith("/"):
+        raise ExecutionError(f"Invalid file path: absolute paths not allowed: {path!r}")
+    resolved = PurePosixPath(path)
+    for part in resolved.parts:
+        if part == "..":
+            raise ExecutionError(f"Invalid file path: path traversal detected: {path!r}")
 
 
 def _build_tar(files: dict[str, str]) -> bytes:
@@ -35,7 +57,12 @@ def _build_tar(files: dict[str, str]) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
         for path, content in files.items():
+            _validate_file_path(path)
             data = content.encode()
+            if len(data) > MAX_FILE_SIZE:
+                raise ExecutionError(
+                    f"File too large: {path!r} is {len(data)} bytes (max {MAX_FILE_SIZE})"
+                )
             info = tarfile.TarInfo(name=path)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
