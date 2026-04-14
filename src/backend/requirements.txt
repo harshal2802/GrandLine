@@ -19,6 +19,7 @@ redis==5.1.1
 # LLM Providers
 anthropic>=0.40.0
 openai>=1.50.0
+langgraph>=0.4
 
 # Container Execution
 aiodocker>=0.23.0
