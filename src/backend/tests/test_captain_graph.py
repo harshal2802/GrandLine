@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agents.captain_graph import build_captain_graph, decompose, validate
+from app.crew.captain_graph import build_captain_graph, decompose, validate
 from app.models.enums import CrewRole
 from app.schemas.dial_system import CompletionResult, TokenUsage
 
@@ -101,6 +101,33 @@ class TestValidateNode:
 
         assert result["plan"] is None
         assert result["error"] is not None
+
+    def test_strips_markdown_fences(self) -> None:
+        fenced = f"```json\n{VALID_PLAN_JSON}\n```"
+        state = {
+            "task": "Build an API",
+            "raw_plan": fenced,
+            "plan": None,
+            "error": None,
+        }
+        result = validate(state)
+
+        assert result["plan"] is not None
+        assert result["plan"].phases[0].name == "Design"
+        assert result["error"] is None
+
+    def test_strips_bare_fences(self) -> None:
+        fenced = f"```\n{VALID_PLAN_JSON}\n```"
+        state = {
+            "task": "Build an API",
+            "raw_plan": fenced,
+            "plan": None,
+            "error": None,
+        }
+        result = validate(state)
+
+        assert result["plan"] is not None
+        assert result["error"] is None
 
 
 class TestFullGraph:

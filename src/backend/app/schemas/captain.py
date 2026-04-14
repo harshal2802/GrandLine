@@ -24,16 +24,33 @@ class VoyagePlanSpec(BaseModel):
     phases: list[PhaseSpec] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def validate_no_circular_deps(self) -> VoyagePlanSpec:
-        """Topological sort to reject circular dependencies."""
-        phase_nums = {p.phase_number for p in self.phases}
-        adj: dict[int, list[int]] = {p.phase_number: [] for p in self.phases}
-        in_degree: dict[int, int] = {p.phase_number: 0 for p in self.phases}
+    def validate_plan_graph(self) -> VoyagePlanSpec:
+        """Validate unique phase numbers, dependency references, and no cycles."""
+        phase_nums = [p.phase_number for p in self.phases]
+        phase_set = set(phase_nums)
+
+        # Fix #5: reject duplicate phase numbers
+        if len(phase_nums) != len(phase_set):
+            seen: set[int] = set()
+            for n in phase_nums:
+                if n in seen:
+                    raise ValueError(f"Duplicate phase_number {n}")
+                seen.add(n)
+
+        # Fix #7: reject depends_on referencing non-existent phases
+        for p in self.phases:
+            for dep in p.depends_on:
+                if dep not in phase_set:
+                    raise ValueError(
+                        f"Phase {p.phase_number} depends on " f"non-existent phase {dep}"
+                    )
+
+        # Topological sort to reject circular dependencies
+        adj: dict[int, list[int]] = {n: [] for n in phase_set}
+        in_degree: dict[int, int] = {n: 0 for n in phase_set}
 
         for p in self.phases:
             for dep in p.depends_on:
-                if dep not in phase_nums:
-                    continue
                 adj[dep].append(p.phase_number)
                 in_degree[p.phase_number] += 1
 
@@ -47,7 +64,7 @@ class VoyagePlanSpec(BaseModel):
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
 
-        if visited != len(phase_nums):
+        if visited != len(phase_set):
             raise ValueError("Voyage plan has circular dependencies between phases")
         return self
 

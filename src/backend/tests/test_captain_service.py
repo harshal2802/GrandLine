@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.models.enums import CrewRole, VoyageStatus
+from app.models.vivre_card import VivreCard
 from app.schemas.dial_system import CompletionResult, TokenUsage
-from app.services.captain_service import CaptainService
+from app.services.captain_service import CaptainError, CaptainService
 
 VOYAGE_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
@@ -168,19 +169,27 @@ class TestChartCourse:
     ) -> None:
         voyage = _mock_voyage()
 
-        with patch(
-            "app.services.captain_service.vivre_card_checkpoint",
-            new_callable=AsyncMock,
-        ) as mock_checkpoint:
-            await service.chart_course(voyage, "Build a REST API with authentication")
+        await service.chart_course(voyage, "Build a REST API with authentication")
 
-            mock_checkpoint.assert_awaited_once()
-            call_kwargs = mock_checkpoint.call_args
-            assert call_kwargs.args[1] == VOYAGE_ID  # voyage_id
-            assert call_kwargs.args[2] == "captain"  # crew_member
+        # session.add called twice: once for plan, once for VivreCard
+        added_objects = [call.args[0] for call in mock_session.add.call_args_list]
+        vivre_cards = [o for o in added_objects if isinstance(o, VivreCard)]
+        assert len(vivre_cards) == 1
+        assert vivre_cards[0].crew_member == "captain"
+        assert vivre_cards[0].voyage_id == VOYAGE_ID
 
     @pytest.mark.asyncio
-    async def test_raises_on_invalid_llm_output(
+    async def test_commits_plan_and_checkpoint_together(
+        self, service: CaptainService, mock_session: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage()
+
+        await service.chart_course(voyage, "Build a REST API with authentication")
+
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_captain_error_on_invalid_llm_output(
         self,
         service: CaptainService,
         mock_dial_router: AsyncMock,
@@ -188,8 +197,22 @@ class TestChartCourse:
         mock_dial_router.route.return_value = _llm_result("not valid json at all")
         voyage = _mock_voyage()
 
-        with pytest.raises(ValueError, match="Failed to parse"):
+        with pytest.raises(CaptainError, match="Failed to parse"):
             await service.chart_course(voyage, "Build a REST API with authentication")
+
+    @pytest.mark.asyncio
+    async def test_resets_status_on_parse_failure(
+        self,
+        service: CaptainService,
+        mock_dial_router: AsyncMock,
+    ) -> None:
+        mock_dial_router.route.return_value = _llm_result("garbage output")
+        voyage = _mock_voyage()
+
+        with pytest.raises(CaptainError):
+            await service.chart_course(voyage, "Build a REST API with authentication")
+
+        assert voyage.status == VoyageStatus.CHARTED.value
 
 
 class TestGetPlan:

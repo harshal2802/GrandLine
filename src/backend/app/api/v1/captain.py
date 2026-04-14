@@ -25,7 +25,7 @@ from app.schemas.captain import (
     PhaseSpec,
     VoyagePlanResponse,
 )
-from app.services.captain_service import CaptainService
+from app.services.captain_service import CaptainError, CaptainService
 
 router = APIRouter(prefix="/voyages/{voyage_id}", tags=["captain"])
 
@@ -62,7 +62,13 @@ async def chart_course(
             },
         )
 
-    plan_model, spec = await captain_service.chart_course(voyage, body.task)
+    try:
+        plan_model, spec = await captain_service.chart_course(voyage, body.task)
+    except CaptainError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": {"code": exc.code, "message": exc.message}},
+        ) from exc
 
     return ChartCourseResponse(
         voyage_id=voyage_id,
