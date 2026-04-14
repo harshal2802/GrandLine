@@ -39,6 +39,16 @@ async def get_captain_service(
     return CaptainService(dial_router, mushi, session)
 
 
+async def get_captain_reader(
+    session: AsyncSession = Depends(get_db),
+) -> CaptainService:
+    """Lightweight dependency for read-only captain operations.
+
+    Avoids requiring dial_router/mushi which may be unavailable.
+    """
+    return CaptainService.reader(session)
+
+
 @router.post(
     "/plan",
     response_model=ChartCourseResponse,
@@ -83,7 +93,7 @@ async def get_plan(
     voyage_id: uuid.UUID,
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
-    captain_service: CaptainService = Depends(get_captain_service),
+    captain_service: CaptainService = Depends(get_captain_reader),
 ) -> VoyagePlanResponse:
     plan = await captain_service.get_plan(voyage_id)
     if plan is None:

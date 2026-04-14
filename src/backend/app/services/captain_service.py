@@ -42,6 +42,16 @@ class CaptainService:
         self._session = session
         self._graph = build_captain_graph(dial_router)
 
+    @classmethod
+    def reader(cls, session: AsyncSession) -> CaptainService:
+        """Create a read-only instance that only needs a DB session."""
+        inst = cls.__new__(cls)
+        inst._session = session
+        inst._dial_router = None  # type: ignore[assignment]
+        inst._mushi = None  # type: ignore[assignment]
+        inst._graph = None  # type: ignore[assignment]
+        return inst
+
     async def chart_course(
         self,
         voyage: Voyage,
@@ -102,20 +112,30 @@ class CaptainService:
         )
         self._session.add(card)
 
+        # Restore replannable status so re-planning is possible
+        voyage.status = VoyageStatus.CHARTED.value
+
         await self._session.commit()
         await self._session.refresh(plan)
 
-        # Publish event after commit — fire-and-forget
-        event = VoyagePlanCreatedEvent(
-            voyage_id=voyage.id,
-            source_role=CrewRole.CAPTAIN,
-            payload={
-                "plan_id": str(plan.id),
-                "version": next_version,
-                "phase_count": len(spec.phases),
-            },
-        )
-        await self._mushi.publish(stream_key(voyage.id), event)
+        # Publish event after commit — best-effort, don't fail the request
+        try:
+            event = VoyagePlanCreatedEvent(
+                voyage_id=voyage.id,
+                source_role=CrewRole.CAPTAIN,
+                payload={
+                    "plan_id": str(plan.id),
+                    "version": next_version,
+                    "phase_count": len(spec.phases),
+                },
+            )
+            await self._mushi.publish(stream_key(voyage.id), event)
+        except Exception:
+            logger.warning(
+                "Failed to publish voyage_plan_created event for voyage %s",
+                voyage.id,
+                exc_info=True,
+            )
 
         return plan, spec
 

@@ -96,14 +96,14 @@ def service(
 
 class TestChartCourse:
     @pytest.mark.asyncio
-    async def test_sets_voyage_status_to_planning(
+    async def test_restores_charted_status_after_success(
         self, service: CaptainService, mock_session: AsyncMock
     ) -> None:
         voyage = _mock_voyage()
 
         await service.chart_course(voyage, "Build a REST API with authentication")
 
-        assert voyage.status == VoyageStatus.PLANNING.value
+        assert voyage.status == VoyageStatus.CHARTED.value
 
     @pytest.mark.asyncio
     async def test_invokes_dial_router_with_captain_role(
@@ -189,6 +189,23 @@ class TestChartCourse:
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_succeeds_when_publish_fails(
+        self,
+        service: CaptainService,
+        mock_mushi: AsyncMock,
+        mock_session: AsyncMock,
+    ) -> None:
+        mock_mushi.publish.side_effect = ConnectionError("Redis unavailable")
+        voyage = _mock_voyage()
+
+        plan_model, spec = await service.chart_course(
+            voyage, "Build a REST API with authentication"
+        )
+
+        assert spec is not None
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_raises_captain_error_on_invalid_llm_output(
         self,
         service: CaptainService,
@@ -242,3 +259,18 @@ class TestGetPlan:
         result = await service.get_plan(VOYAGE_ID)
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_reader_instance_can_get_plan(self) -> None:
+        session = AsyncMock()
+        plan = MagicMock()
+        plan.version = 3
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = plan
+        session.execute = AsyncMock(return_value=result_mock)
+
+        reader = CaptainService.reader(session)
+        result = await reader.get_plan(VOYAGE_ID)
+
+        assert result is not None
+        assert result.version == 3
