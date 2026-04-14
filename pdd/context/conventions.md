@@ -1,6 +1,6 @@
 # GrandLine Conventions
 
-**Last updated**: 2026-04-05
+**Last updated**: 2026-04-14
 
 ## Philosophy
 - **Local-first**: Docker Compose is the primary dev environment. Everything runs locally.
@@ -50,12 +50,12 @@ src/
     api/                    — Route handlers (REST, SSE, WebSocket)
       v1/                   — Versioned API routes
     core/                   — Config, security, dependencies
-    crew/                   — Agent persona definitions
-      captain.py            — PM agent (task decomposition)
-      navigator.py          — Architect agent (Poneglyph drafting)
-      shipwright.py         — Developer agent (code generation)
-      doctor.py             — QA agent (test writing + validation)
-      helmsman.py           — DevOps agent (deployment)
+    crew/                   — Agent LangGraph definitions
+      captain_graph.py      — Captain two-node graph (decompose → validate)
+      navigator.py          — Architect agent (Poneglyph drafting) [planned]
+      shipwright.py         — Developer agent (code generation) [planned]
+      doctor.py             — QA agent (test writing + validation) [planned]
+      helmsman.py           — DevOps agent (deployment) [planned]
     dial_system/            — LLM gateway
       router.py             — DialSystemRouter (role routing + failover)
       factory.py            — Adapter factory (create_adapter, build_router_from_config)
@@ -155,6 +155,16 @@ src/
 - Parameterized queries only (SQLAlchemy handles this)
 - CORS configured explicitly — no wildcard in production
 - Agent execution in sandboxed containers — no host access
+
+## Crew agent pattern
+Each crew agent follows a consistent three-layer structure:
+- **Graph** (`crew/<agent>_graph.py`): LangGraph `StateGraph` with typed state dict. Contains LLM interaction nodes and validation nodes. Compiled once and cached by the service.
+- **Service** (`services/<agent>_service.py`): Business logic layer. Owns the DB session, manages voyage status transitions, persists results + VivreCard checkpoints in a single atomic commit, publishes events best-effort after commit.
+- **API** (`api/v1/<agent>.py`): FastAPI router with dependency injection. Separate dependencies for write operations (requires dial_router + mushi) and read operations (session-only via `Service.reader()`).
+
+Error pattern: each agent defines a structured `<Agent>Error(code, message)` exception. The API layer catches it and returns 422 with `{"error": {"code": ..., "message": ...}}`.
+
+Status lifecycle: voyage moves to a transient status (e.g., PLANNING) during processing, resets to CHARTED on failure, and restores to CHARTED on success so re-invocation is possible.
 
 ## Message bus (Den Den Mushi)
 - Built on **Redis Streams** — not Celery
