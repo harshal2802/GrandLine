@@ -1,6 +1,6 @@
 # Project: GrandLine
 
-**Last updated**: 2026-04-12
+**Last updated**: 2026-04-14
 
 ## What we're building
 A web-based multi-agent orchestration platform where a crew of persona-based AI agents voyage together through a structured pipeline to build, test, and deploy software solutions. Themed after One Piece — the crew, the voyage, and the platform vocabulary are all drawn from that world.
@@ -143,7 +143,7 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 - Never lose work — Vivre Card checkpointing is mandatory for provider failover
 
 ## Current state
-Phases 1-8 complete. The backend is functional with:
+Phases 1-10 complete. The backend is functional with:
 - **Phase 1-2**: Docker infrastructure, PostgreSQL + Redis, SQLAlchemy models (Voyage, VoyagePlan, Poneglyph, VivreCard, CrewAction, DialConfig)
 - **Phase 3**: Pydantic schemas for all models, DialConfig with JSONB role_mapping/fallback_chain
 - **Phase 4**: JWT auth (register, login, refresh, logout) with default-deny middleware
@@ -151,6 +151,8 @@ Phases 1-8 complete. The backend is functional with:
 - **Phase 6**: Dial System LLM gateway — provider adapters (Anthropic, OpenAI, Ollama), adapter factory, role-based routing with failover, Redis sliding-window rate limiter, SSE streaming endpoint
 - **Phase 7**: Vivre Card state checkpointing — service, API, and Dial System hook for provider failover
 - **Phase 8**: Execution Service — containerized sandbox with gVisor/Docker backend (aiodocker), swappable ExecutionBackend ABC, per-user sandbox lifecycle, path traversal sanitization, file size limits, app lifespan wiring
+- **Phase 9**: Git Integration Service — per-voyage sandboxed git operations (clone, branch, commit, diff, log), host allowlist to prevent token exfiltration, NUL-delimited git output parsing, branch creation from `origin/<base>` for freshness
+- **Phase 10**: Captain Agent — first crew member implemented. LangGraph two-node graph (decompose → validate) for task-to-plan decomposition via Dial System. CaptainService with atomic plan + VivreCard persistence, replannable status lifecycle, best-effort event publishing. VoyagePlanSpec with dependency graph validation (unique phases, valid references, cycle detection via topological sort). REST endpoints: POST/GET `/voyages/{id}/plan`
 
 Frontend not yet started.
 

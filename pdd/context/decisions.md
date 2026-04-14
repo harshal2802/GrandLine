@@ -1,6 +1,6 @@
 # GrandLine — Architectural Decisions
 
-**Last updated**: 2026-04-05
+**Last updated**: 2026-04-14
 
 ---
 
@@ -129,3 +129,35 @@
 **What was decided**: Plan phases become GitHub issues. Each issue is worked on in a separate branch/PR. PRs must pass tests and PDD review before merge. User approves all PRs.
 **Why**: Clean git history, traceable work, and human-in-the-loop for quality control. Each PR is a reviewable, revertable unit of work.
 **Don't suggest**: Batching multiple issues into one PR, auto-merging without user approval, committing directly to main
+
+---
+
+## Decision: Git host allowlist for token safety
+**Date**: 2026-04-13
+**What was decided**: Git operations that receive a URL (clone) validate the host against `ALLOWED_GIT_HOSTS` (default: `github.com`, `gitlab.com`). If the config key is absent, host validation is skipped (open by default for self-hosted setups).
+**Why**: Git clone URLs are user-supplied. An attacker could point a clone URL at a server they control to exfiltrate the bearer token injected into the credential helper. The allowlist bounds the blast radius.
+**Don't suggest**: Disabling host validation, embedding tokens in the URL itself, trusting all hosts unconditionally
+
+---
+
+## Decision: LangGraph two-node graph for Captain Agent
+**Date**: 2026-04-14
+**What was decided**: The Captain Agent uses a compiled LangGraph `StateGraph` with two nodes — `decompose` (LLM call) → `validate` (JSON parse + Pydantic validation). The graph is compiled once per `CaptainService` instance and cached as `self._graph`.
+**Why**: The graph is intentionally minimal for v1. Decompose calls the Dial System via `CrewRole.CAPTAIN`, validate strips markdown fences and runs `VoyagePlanSpec.model_validate()`. No retry loops yet — that's future work. Caching the compiled graph avoids per-request recompilation overhead.
+**Don't suggest**: Retry loops in the graph (premature), raw LLM calls without the Dial System, building a new graph per request
+
+---
+
+## Decision: CaptainService.reader() for read-only operations
+**Date**: 2026-04-14
+**What was decided**: `CaptainService` has a `reader(session)` classmethod that creates a lightweight instance with only a DB session — no dial_router, mushi, or compiled graph. Used by `GET /plan`.
+**Why**: The GET endpoint is a simple DB read. Requiring a `DialSystemRouter` dependency means that if the voyage's DialConfig is deleted, the plan becomes unreadable even though it's already persisted. Decoupling read from write dependencies keeps the read path robust.
+**Don't suggest**: Sharing the full `get_captain_service` dependency for read endpoints, creating a separate PlanReadService (over-abstraction for one method)
+
+---
+
+## Decision: Best-effort event publishing after DB commit
+**Date**: 2026-04-14
+**What was decided**: `chart_course` commits plan + VivreCard to PostgreSQL first, then publishes the `VoyagePlanCreatedEvent` to Den Den Mushi in a try/except. If Redis is down, the event is logged as a warning and the request succeeds.
+**Why**: The plan is the source of truth, not the event. If publish fails after a successful commit, the caller gets a successful response and can retry the event later. Failing the request after the plan is already committed leaves the caller with a 500 for a successful write and no safe retry path (the voyage status has moved out of CHARTED).
+**Don't suggest**: Publishing before commit (data loss risk), failing the request on publish failure, transactional outbox (premature for current scale)
