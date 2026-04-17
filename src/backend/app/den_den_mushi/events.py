@@ -40,6 +40,10 @@ class ValidationPassedEvent(DenDenMushiEvent):
     event_type: Literal["validation_passed"] = "validation_passed"
 
 
+class ValidationFailedEvent(DenDenMushiEvent):
+    event_type: Literal["validation_failed"] = "validation_failed"
+
+
 class DeploymentCompletedEvent(DenDenMushiEvent):
     event_type: Literal["deployment_completed"] = "deployment_completed"
 
@@ -58,6 +62,7 @@ AnyEvent = Annotated[
     | HealthCheckWrittenEvent
     | CodeGeneratedEvent
     | ValidationPassedEvent
+    | ValidationFailedEvent
     | DeploymentCompletedEvent
     | ProviderSwitchedEvent
     | CheckpointCreatedEvent,
