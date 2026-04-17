@@ -36,6 +36,10 @@ class CodeGeneratedEvent(DenDenMushiEvent):
     event_type: Literal["code_generated"] = "code_generated"
 
 
+class TestsPassedEvent(DenDenMushiEvent):
+    event_type: Literal["tests_passed"] = "tests_passed"
+
+
 class ValidationPassedEvent(DenDenMushiEvent):
     event_type: Literal["validation_passed"] = "validation_passed"
 
@@ -61,6 +65,7 @@ AnyEvent = Annotated[
     | PoneglyphDraftedEvent
     | HealthCheckWrittenEvent
     | CodeGeneratedEvent
+    | TestsPassedEvent
     | ValidationPassedEvent
     | ValidationFailedEvent
     | DeploymentCompletedEvent
