@@ -3,11 +3,13 @@
 from sqlalchemy import inspect
 
 from app.models import Base
+from app.models.build_artifact import BuildArtifact
 from app.models.crew_action import CrewAction
 from app.models.dial_config import DialConfig
 from app.models.enums import CheckpointReason, CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
+from app.models.shipwright_run import ShipwrightRun
 from app.models.user import User
 from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
@@ -26,6 +28,8 @@ def test_all_models_registered_in_metadata() -> None:
         "dial_configs",
         "health_checks",
         "validation_runs",
+        "shipwright_runs",
+        "build_artifacts",
     }
     assert expected == table_names
 
@@ -216,3 +220,50 @@ def test_validation_run_table_columns() -> None:
         "output",
         "created_at",
     }
+
+
+def test_shipwright_run_table_columns() -> None:
+    mapper = inspect(ShipwrightRun)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "poneglyph_id",
+        "phase_number",
+        "status",
+        "iteration_count",
+        "exit_code",
+        "passed_count",
+        "failed_count",
+        "total_count",
+        "output",
+        "created_at",
+    }
+
+
+def test_build_artifact_table_columns() -> None:
+    mapper = inspect(BuildArtifact)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "shipwright_run_id",
+        "phase_number",
+        "file_path",
+        "content",
+        "language",
+        "created_by",
+        "created_at",
+    }
+
+
+def test_shipwright_run_voyage_phase_indexed() -> None:
+    table = ShipwrightRun.__table__
+    index_names = {idx.name for idx in table.indexes}
+    assert "ix_shipwright_runs_voyage_phase" in index_names
+
+
+def test_build_artifact_voyage_phase_indexed() -> None:
+    table = BuildArtifact.__table__
+    index_names = {idx.name for idx in table.indexes}
+    assert "ix_build_artifacts_voyage_phase" in index_names

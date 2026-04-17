@@ -316,12 +316,13 @@ class DoctorService:
     async def get_health_checks(
         self,
         voyage_id: uuid.UUID,
+        phase_number: int | None = None,
     ) -> list[HealthCheck]:
-        result = await self._session.execute(
-            select(HealthCheck)
-            .where(HealthCheck.voyage_id == voyage_id)
-            .order_by(HealthCheck.phase_number)
-        )
+        stmt = select(HealthCheck).where(HealthCheck.voyage_id == voyage_id)
+        if phase_number is not None:
+            stmt = stmt.where(HealthCheck.phase_number == phase_number)
+        stmt = stmt.order_by(HealthCheck.phase_number)
+        result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
 

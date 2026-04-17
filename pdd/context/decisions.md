@@ -161,3 +161,43 @@
 **What was decided**: `chart_course` commits plan + VivreCard to PostgreSQL first, then publishes the `VoyagePlanCreatedEvent` to Den Den Mushi in a try/except. If Redis is down, the event is logged as a warning and the request succeeds.
 **Why**: The plan is the source of truth, not the event. If publish fails after a successful commit, the caller gets a successful response and can retry the event later. Failing the request after the plan is already committed leaves the caller with a 500 for a successful write and no safe retry path (the voyage status has moved out of CHARTED).
 **Don't suggest**: Publishing before commit (data loss risk), failing the request on publish failure, transactional outbox (premature for current scale)
+
+---
+
+## Decision: Shipwright invocation is phase-scoped
+**Date**: 2026-04-17
+**What was decided**: The Shipwright Agent's build API is phase-scoped (`POST /voyages/{id}/phases/{phase_number}/build`), not voyage-scoped. One invocation builds exactly one phase. The future voyage pipeline (Phase 15) fans out one invocation per phase to enable parallelism.
+**Why**: Per-phase invocations are the parallelism primitive. A voyage-level endpoint would force serial phase builds, or require the Shipwright itself to manage internal parallelism — premature complexity. Scoping per-phase also keeps the LLM context small (one Poneglyph + its tests) and enables independent retries.
+**Don't suggest**: Voyage-scoped build endpoint that loops over phases internally, hidden intra-Shipwright concurrency
+
+---
+
+## Decision: Service-owned iteration loop, graph stays side-effect-free
+**Date**: 2026-04-17
+**What was decided**: The Shipwright's generate→test→refine iteration loop is implemented in the **service layer**, not inside the compiled LangGraph graph. The service runs single-iteration graph invocations in a Python loop, writing a `VivreCard` between iterations for "no work lost" guarantees.
+**Why**: LangGraph graphs should remain pure — nodes call LLMs and sandboxes but don't own DB state. Per-iteration checkpointing is a DB write; keeping it in the service preserves graph purity and makes the loop trivially testable with mocked graph invocations. The alternative (LangGraph's built-in checkpointer) adds infrastructure without solving the observability problem (we want one VivreCard row per iteration, queryable by the Observation Deck).
+**Don't suggest**: Putting `session.commit()` inside graph nodes, relying on LangGraph's internal checkpointer for product-level state, one giant `.ainvoke()` that runs the full loop opaquely
+
+---
+
+## Decision: Shipwright voyage-level status gate (v1 scope-cut)
+**Date**: 2026-04-17
+**What was decided**: v1 of the Shipwright enforces a single in-flight invocation per voyage via the `voyage.status == CHARTED` gate (transitions to `BUILDING` during the call). True per-phase parallelism is deferred until a `phase_status` map is added to the voyage model.
+**Why**: Shipping a correct sequential path first. Concurrent invocations on the same voyage would race the `voyage.status` transition and the `delete-before-insert` step for `BuildArtifact`. A `phase_status` refactor is the right long-term fix but premature for the first Shipwright cut. Phase 15's voyage pipeline will sequence phase builds; user-level fan-out across phases waits for the refactor.
+**Don't suggest**: Removing the 409 gate, introducing a voyage-level lock in Redis (heavier than needed), bolting on a phase_status column without a migration plan
+
+---
+
+## Decision: Vitest deferred; Shipwright v1 is pytest-only
+**Date**: 2026-04-17
+**What was decided**: If a phase's `HealthCheck.framework == "vitest"`, `ShipwrightService.build_code` returns `ShipwrightError("VITEST_NOT_SUPPORTED")` → 422. pytest-only for v1. Vitest support is a follow-up feature.
+**Why**: Running Node/Vitest inside the sandbox is a separate integration (different runtime, different pytest-vs-vitest output parsing, different file layout). Scoping v1 to pytest keeps the first Shipwright cut focused. The error code is explicit so the voyage pipeline can surface it cleanly.
+**Don't suggest**: Silent fallback to pytest for Vitest tests, adding Vitest runner without a dedicated PDD cycle
+
+---
+
+## Decision: Shipwright max_iterations hardcoded to 3
+**Date**: 2026-04-17
+**What was decided**: `SHIPWRIGHT_MAX_ITERATIONS = 3` is a module-level constant, not an env/config value. The loop terminates on green tests or after 3 attempts (generate + run, 3x).
+**Why**: Config surface area has a cost. 3 matches typical Claude/GPT-4 "fix your own output" attention span and keeps worst-case latency bounded. If Phase 15 integration tests show 3 is too low, bump the constant — no schema change, no API change. Adding an env var now signals "this is a knob we tune" when it's actually a best-effort convergence limit.
+**Don't suggest**: Exposing `max_iterations` via API, reading from `.env` at startup, per-voyage overrides
