@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.crew.utils import strip_fences
 from app.dial_system.router import DialSystemRouter
 from app.models.enums import CrewRole
 from app.schemas.captain import VoyagePlanSpec
@@ -51,20 +51,10 @@ async def decompose(
     return {"raw_plan": result.content}
 
 
-_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
-
-
-def _strip_fences(text: str) -> str:
-    """Remove markdown code fences that LLMs commonly wrap JSON in."""
-    text = text.strip()
-    match = _FENCE_RE.match(text)
-    return match.group(1).strip() if match else text
-
-
 def validate(state: CaptainState) -> dict[str, Any]:
     """Parse raw LLM output into a validated VoyagePlanSpec."""
     try:
-        raw = _strip_fences(state["raw_plan"])
+        raw = strip_fences(state["raw_plan"])
         data = json.loads(raw)
         spec = VoyagePlanSpec.model_validate(data)
         return {"plan": spec, "error": None}

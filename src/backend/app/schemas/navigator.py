@@ -41,10 +41,6 @@ class NavigatorOutputSpec(BaseModel):
         return self
 
 
-class DraftPoneglyphsRequest(BaseModel):
-    """Empty body — plan is fetched from DB internally."""
-
-
 class DraftPoneglyphsResponse(BaseModel):
     voyage_id: uuid.UUID
     poneglyph_ids: list[uuid.UUID]

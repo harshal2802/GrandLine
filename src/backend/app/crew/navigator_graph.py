@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.crew.utils import strip_fences
 from app.dial_system.router import DialSystemRouter
 from app.models.enums import CrewRole
 from app.schemas.dial_system import CompletionRequest
@@ -57,20 +57,10 @@ async def generate(
     return {"raw_poneglyphs": result.content}
 
 
-_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
-
-
-def _strip_fences(text: str) -> str:
-    """Remove markdown code fences that LLMs commonly wrap JSON in."""
-    text = text.strip()
-    match = _FENCE_RE.match(text)
-    return match.group(1).strip() if match else text
-
-
 def validate(state: NavigatorState) -> dict[str, Any]:
     """Parse raw LLM output into validated PoneglyphContentSpec list."""
     try:
-        raw = _strip_fences(state["raw_poneglyphs"])
+        raw = strip_fences(state["raw_poneglyphs"])
         data = json.loads(raw)
         spec = NavigatorOutputSpec.model_validate(data)
         return {"poneglyphs": spec.poneglyphs, "error": None}

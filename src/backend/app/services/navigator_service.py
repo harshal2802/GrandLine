@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crew.navigator_graph import build_navigator_graph
@@ -86,6 +86,21 @@ class NavigatorService:
                 "PONEGLYPH_PARSE_FAILED",
                 f"Failed to parse poneglyphs: {error}",
             )
+
+        plan_phase_numbers = {p["phase_number"] for p in plan_phases}
+        spec_phase_numbers = {s.phase_number for s in specs}
+        if spec_phase_numbers != plan_phase_numbers:
+            voyage.status = VoyageStatus.CHARTED.value
+            await self._session.flush()
+            raise NavigatorError(
+                "PONEGLYPH_PHASE_MISMATCH",
+                (
+                    f"Poneglyph phases {sorted(spec_phase_numbers)} do not match "
+                    f"plan phases {sorted(plan_phase_numbers)}"
+                ),
+            )
+
+        await self._session.execute(delete(Poneglyph).where(Poneglyph.voyage_id == voyage.id))
 
         poneglyphs: list[Poneglyph] = []
         for spec in specs:

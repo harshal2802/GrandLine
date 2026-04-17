@@ -267,6 +267,63 @@ class TestDraftPoneglyphs:
 
         assert voyage.status == VoyageStatus.CHARTED.value
 
+    @pytest.mark.asyncio
+    async def test_deletes_existing_poneglyphs_before_insert(
+        self, service: NavigatorService, mock_session: AsyncMock
+    ) -> None:
+        from sqlalchemy.sql.dml import Delete
+
+        voyage = _mock_voyage()
+
+        await service.draft_poneglyphs(voyage, _mock_plan())
+
+        executed_stmts = [call.args[0] for call in mock_session.execute.call_args_list]
+        delete_stmts = [s for s in executed_stmts if isinstance(s, Delete)]
+        assert len(delete_stmts) == 1
+
+    @pytest.mark.asyncio
+    async def test_raises_on_phase_number_mismatch(
+        self,
+        service: NavigatorService,
+        mock_dial_router: AsyncMock,
+    ) -> None:
+        mismatched = json.dumps(
+            {
+                "poneglyphs": [
+                    {
+                        "phase_number": 1,
+                        "title": "Design",
+                        "task_description": "desc",
+                        "technical_constraints": [],
+                        "expected_inputs": [],
+                        "expected_outputs": [],
+                        "test_criteria": ["criterion"],
+                        "file_paths": [],
+                        "implementation_notes": "",
+                    },
+                    {
+                        "phase_number": 99,
+                        "title": "Bogus",
+                        "task_description": "desc",
+                        "technical_constraints": [],
+                        "expected_inputs": [],
+                        "expected_outputs": [],
+                        "test_criteria": ["criterion"],
+                        "file_paths": [],
+                        "implementation_notes": "",
+                    },
+                ]
+            }
+        )
+        mock_dial_router.route.return_value = _llm_result(mismatched)
+        voyage = _mock_voyage()
+
+        with pytest.raises(NavigatorError) as exc_info:
+            await service.draft_poneglyphs(voyage, _mock_plan())
+
+        assert exc_info.value.code == "PONEGLYPH_PHASE_MISMATCH"
+        assert voyage.status == VoyageStatus.CHARTED.value
+
 
 class TestGetPoneglyphs:
     @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.captain import get_captain_reader
 from app.api.v1.dependencies import (
     get_authorized_voyage,
     get_current_user,
@@ -44,12 +45,6 @@ async def get_navigator_reader(
 ) -> NavigatorService:
     """Lightweight dependency for read-only navigator operations."""
     return NavigatorService.reader(session)
-
-
-async def get_captain_reader(
-    session: AsyncSession = Depends(get_db),
-) -> CaptainService:
-    return CaptainService.reader(session)
 
 
 @router.post(
