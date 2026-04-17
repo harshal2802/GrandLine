@@ -1,4 +1,4 @@
-"""health_checks
+"""health_checks and validation_runs
 
 Revision ID: a1b2c3d4e5f6
 Revises: 00b24ef2f7d8
@@ -21,6 +21,30 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.create_table(
+        "validation_runs",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "voyage_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("voyages.id"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column("status", sa.String(20), nullable=False),
+        sa.Column("exit_code", sa.Integer(), nullable=False),
+        sa.Column("passed_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("total_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("output", sa.Text(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+    )
+
+    op.create_table(
         "health_checks",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column(
@@ -42,9 +66,13 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("framework", sa.String(20), nullable=False, server_default="pytest"),
         sa.Column("last_run_status", sa.String(20), nullable=True),
-        sa.Column("last_run_output", sa.Text(), nullable=True),
         sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("metadata", postgresql.JSONB(), nullable=True),
+        sa.Column(
+            "last_validation_run_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("validation_runs.id"),
+            nullable=True,
+        ),
         sa.Column("created_by", sa.String(50), nullable=False, server_default="doctor"),
         sa.Column(
             "created_at",
@@ -57,3 +85,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("health_checks")
+    op.drop_table("validation_runs")

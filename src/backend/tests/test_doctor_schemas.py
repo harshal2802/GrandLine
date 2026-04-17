@@ -72,6 +72,38 @@ class TestHealthCheckSpec:
         )
         assert spec.framework == "pytest"
 
+    def test_rejects_absolute_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="relative"):
+            HealthCheckSpec(
+                phase_number=1,
+                file_path="/etc/passwd",
+                content="pass",
+            )
+
+    def test_rejects_path_traversal(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            HealthCheckSpec(
+                phase_number=1,
+                file_path="../../etc/passwd",
+                content="pass",
+            )
+
+    def test_rejects_nested_path_traversal(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            HealthCheckSpec(
+                phase_number=1,
+                file_path="tests/../../etc/passwd",
+                content="pass",
+            )
+
+    def test_accepts_nested_relative_path(self) -> None:
+        spec = HealthCheckSpec(
+            phase_number=1,
+            file_path="tests/unit/test_auth.py",
+            content="pass",
+        )
+        assert spec.file_path == "tests/unit/test_auth.py"
+
 
 class TestDoctorOutputSpec:
     def test_rejects_empty_health_checks(self) -> None:
@@ -105,3 +137,11 @@ class TestValidateCodeRequest:
     def test_accepts_files_dict(self) -> None:
         req = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
         assert "src/main.py" in req.files
+
+    def test_rejects_absolute_path_in_files(self) -> None:
+        with pytest.raises(ValidationError, match="relative"):
+            ValidateCodeRequest(files={"/etc/passwd": "bad"})
+
+    def test_rejects_path_traversal_in_files(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            ValidateCodeRequest(files={"../../etc/passwd": "bad"})

@@ -54,9 +54,8 @@ def _mock_health_check(hc_id: uuid.UUID, phase_number: int) -> MagicMock:
     hc.content = "def test_x(): assert False"
     hc.framework = "pytest"
     hc.last_run_status = None
-    hc.last_run_output = None
     hc.last_run_at = None
-    hc.metadata_ = {"framework": "pytest"}
+    hc.last_validation_run_id = None
     hc.created_by = "doctor"
     hc.created_at = datetime(2026, 4, 16, tzinfo=UTC)
     return hc
@@ -193,9 +192,12 @@ class TestRunValidationEndpoint:
         from app.api.v1.doctor import run_validation
 
         doc_svc = _mock_doctor_service()
+        doc_reader = _mock_doctor_service()
         body = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
 
-        result = await run_validation(VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc)
+        result = await run_validation(
+            VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc, doc_reader
+        )
 
         assert result.status == "passed"
         assert result.passed_count == 2
@@ -206,6 +208,7 @@ class TestRunValidationEndpoint:
         from app.api.v1.doctor import run_validation
 
         doc_svc = _mock_doctor_service()
+        doc_reader = _mock_doctor_service()
         doc_svc.validate_code.return_value = ValidationResultResponse(
             voyage_id=VOYAGE_ID,
             status="failed",
@@ -216,7 +219,9 @@ class TestRunValidationEndpoint:
         )
         body = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
 
-        result = await run_validation(VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc)
+        result = await run_validation(
+            VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc, doc_reader
+        )
 
         assert result.status == "failed"
         assert result.failed_count == 1
@@ -226,24 +231,42 @@ class TestRunValidationEndpoint:
         from app.api.v1.doctor import run_validation
 
         doc_svc = _mock_doctor_service()
+        doc_reader = _mock_doctor_service()
         body = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
         voyage = _mock_voyage(status=VoyageStatus.PLANNING.value)
 
         with pytest.raises(HTTPException) as exc_info:
-            await run_validation(VOYAGE_ID, body, _mock_user(), voyage, doc_svc)
+            await run_validation(VOYAGE_ID, body, _mock_user(), voyage, doc_svc, doc_reader)
 
         assert exc_info.value.status_code == 409
 
     @pytest.mark.asyncio
-    async def test_returns_422_on_no_health_checks(self) -> None:
+    async def test_returns_404_when_no_health_checks(self) -> None:
         from app.api.v1.doctor import run_validation
 
         doc_svc = _mock_doctor_service()
-        doc_svc.validate_code.side_effect = DoctorError("NO_HEALTH_CHECKS", "No health checks")
+        doc_reader = _mock_doctor_service()
+        doc_reader.get_health_checks.return_value = []
         body = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
 
         with pytest.raises(HTTPException) as exc_info:
-            await run_validation(VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc)
+            await run_validation(VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc, doc_reader)
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail["error"]["code"] == "NO_HEALTH_CHECKS"
+        doc_svc.validate_code.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_returns_422_on_doctor_error(self) -> None:
+        from app.api.v1.doctor import run_validation
+
+        doc_svc = _mock_doctor_service()
+        doc_reader = _mock_doctor_service()
+        doc_svc.validate_code.side_effect = DoctorError("HEALTH_CHECK_PARSE_FAILED", "Bad stuff")
+        body = ValidateCodeRequest(files={"src/main.py": "print('hi')"})
+
+        with pytest.raises(HTTPException) as exc_info:
+            await run_validation(VOYAGE_ID, body, _mock_user(), _mock_voyage(), doc_svc, doc_reader)
 
         assert exc_info.value.status_code == 422
-        assert exc_info.value.detail["error"]["code"] == "NO_HEALTH_CHECKS"
+        assert exc_info.value.detail["error"]["code"] == "HEALTH_CHECK_PARSE_FAILED"

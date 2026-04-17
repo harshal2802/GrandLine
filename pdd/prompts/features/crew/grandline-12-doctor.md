@@ -47,11 +47,28 @@ publishing after commit. Reuse the shared `strip_fences` helper in `app/crew/uti
 
 ## Deliverables
 
-### 1. Database — new `HealthCheck` model + migration
+### 1. Database — new `HealthCheck` + `ValidationRun` models + migration
 
-New table `health_checks` (migration file under `src/backend/alembic/versions/`):
+Two new tables in a single migration file under `src/backend/alembic/versions/`.
+`validation_runs` is created first so the `health_checks.last_validation_run_id` FK
+can reference it.
 
 ```python
+op.create_table(
+    "validation_runs",
+    sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+    sa.Column("voyage_id", postgresql.UUID(as_uuid=True),
+              sa.ForeignKey("voyages.id"), nullable=False, index=True),
+    sa.Column("status", sa.String(20), nullable=False),
+    sa.Column("exit_code", sa.Integer(), nullable=False),
+    sa.Column("passed_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("total_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("output", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
+              server_default=sa.func.now()),
+)
+
 op.create_table(
     "health_checks",
     sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -64,19 +81,47 @@ op.create_table(
     sa.Column("content", sa.Text(), nullable=False),
     sa.Column("framework", sa.String(20), nullable=False, server_default="pytest"),
     sa.Column("last_run_status", sa.String(20), nullable=True),
-    sa.Column("last_run_output", sa.Text(), nullable=True),
     sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
-    sa.Column("metadata", postgresql.JSONB(), nullable=True),
+    sa.Column("last_validation_run_id", postgresql.UUID(as_uuid=True),
+              sa.ForeignKey("validation_runs.id"), nullable=True, index=True),
     sa.Column("created_by", sa.String(50), nullable=False, server_default="doctor"),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
               server_default=sa.func.now()),
 )
 ```
 
-Downgrade drops the table. Set `revision` to a new random hex; `down_revision` to the
-current head (`00b24ef2f7d8`).
+Downgrade drops both tables in reverse order (`health_checks` first). Set
+`revision` to a new random hex; `down_revision` to the current head.
 
-SQLAlchemy model — `app/models/health_check.py`:
+**No `metadata` JSONB column on `HealthCheck`** — `framework` is a first-class
+column, and per-run output lives on `ValidationRun`. Do not add a bag-of-extras
+column until a real second field is needed.
+
+SQLAlchemy models:
+
+`app/models/validation_run.py`:
+
+```python
+class ValidationRun(Base):
+    __tablename__ = "validation_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True,
+                                          default=uuid.uuid4)
+    voyage_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("voyages.id"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    exit_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+```
+
+`app/models/health_check.py`:
 
 ```python
 class HealthCheck(Base):
@@ -95,23 +140,25 @@ class HealthCheck(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     framework: Mapped[str] = mapped_column(String(20), default="pytest", nullable=False)
     last_run_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    last_run_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB,
-                                                              nullable=True)
+    last_validation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("validation_runs.id"),
+        index=True, nullable=True
+    )
     created_by: Mapped[str] = mapped_column(String(50), default="doctor", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 ```
 
-Export from `app/models/__init__.py`.
+Export both from `app/models/__init__.py`.
 
 ### 2. Pydantic Schemas
 
-`app/schemas/health_check.py` — read model (mirrors `schemas/poneglyph.py`):
+`app/schemas/health_check.py` — read model (mirrors `schemas/poneglyph.py`).
+No `last_run_output` or `metadata_` fields — output lives on `ValidationRun`.
 
 ```python
 class HealthCheckRead(BaseModel):
@@ -124,22 +171,46 @@ class HealthCheckRead(BaseModel):
     content: str
     framework: str
     last_run_status: str | None
-    last_run_output: str | None
     last_run_at: datetime | None
-    metadata_: dict[str, Any] | None
+    last_validation_run_id: uuid.UUID | None
     created_by: str
     created_at: datetime
 ```
 
-`app/schemas/doctor.py`:
+`app/schemas/doctor.py` — includes **path-safety validators** on every user- or
+LLM-supplied path. Sandboxed execution is not a substitute for input validation:
+traversal in `file_path` would let the Doctor clobber arbitrary repo files on
+the best-effort git commit, and traversal in `ValidateCodeRequest.files` would
+layer attacker-chosen filenames next to the real test files.
 
 ```python
+import posixpath
+
+def _validate_relative_path(path: str) -> str:
+    if path.startswith("/") or path.startswith("\\"):
+        raise ValueError(f"Path must be relative, got {path!r}")
+    # Reject drive letters / URL schemes in the first segment
+    if ":" in path.split("/")[0]:
+        raise ValueError(f"Path must not be a drive/scheme, got {path!r}")
+    normalized = posixpath.normpath(path)
+    if normalized.startswith("..") or "/../" in f"/{normalized}/":
+        raise ValueError(f"Path traversal not allowed in {path!r}")
+    if normalized in (".", ""):
+        raise ValueError(f"Path must not be empty, got {path!r}")
+    return path
+
+
 class HealthCheckSpec(BaseModel):
     """What the LLM emits for one phase's test file."""
     phase_number: int = Field(ge=1)
     file_path: str = Field(min_length=1, max_length=500)
     content: str = Field(min_length=1)
     framework: Literal["pytest", "vitest"] = "pytest"
+
+    @field_validator("file_path")
+    @classmethod
+    def _validate_file_path(cls, v: str) -> str:
+        return _validate_relative_path(v)
 
 
 class DoctorOutputSpec(BaseModel):
@@ -168,6 +239,13 @@ class HealthCheckListResponse(BaseModel):
 class ValidateCodeRequest(BaseModel):
     """Caller supplies the Shipwright-produced files to test against."""
     files: dict[str, str] = Field(min_length=1)
+
+    @field_validator("files")
+    @classmethod
+    def _validate_file_paths(cls, v: dict[str, str]) -> dict[str, str]:
+        for path in v:
+            _validate_relative_path(path)
+        return v
 
 
 class ValidationResultResponse(BaseModel):
@@ -335,22 +413,34 @@ class DoctorService:
 
 **`validate_code` flow:**
 1. Set `voyage.status = REVIEWING`, flush.
-2. Load existing health checks via a SELECT (raise `DoctorError("NO_HEALTH_CHECKS",
-   ...)` if none). Reset status first.
+2. Load existing health checks via a SELECT. If empty, the service can assume the
+   API layer pre-checked (see API rules); still safe to raise `DoctorError` for
+   the rare race. Reset status first.
 3. Combine `shipwright_files | {hc.file_path: hc.content for hc in hcs}` into a
    single `files` dict.
 4. Run via `ExecutionService.run(user_id, ExecutionRequest(
      command="cd /workspace && python -m pytest -x --tb=short",
      files=files, timeout_seconds=300))`.
 5. Decide pass/fail by `exit_code == 0`.
-6. Parse a simple `passed_count` / `failed_count` from the stdout (count lines
-   matching `PASSED`/`FAILED` from pytest's short summary; fallback to
-   `exit_code == 0` → `passed_count = total`, else `failed_count = total`).
-7. Update each health check row: set `last_run_status = "passed"` or `"failed"`,
-   `last_run_at = utcnow()`, `last_run_output = result.stdout[-4000:]` (truncated).
-8. Restore `voyage.status = CHARTED`, commit.
-9. Publish `ValidationPassedEvent` or `ValidationFailedEvent` best-effort.
-10. Return a `ValidationResultResponse`.
+6. Parse `passed_count` / `failed_count` from the stdout (count lines matching
+   `PASSED`/`FAILED`; fallback to `exit_code == 0` → `passed_count = total`,
+   else `failed_count = total`).
+7. **Persist one `ValidationRun` row** with `status`, `exit_code`,
+   `passed_count`, `failed_count`, `total_count = len(health_checks)`, and
+   `output = result.stdout[-4000:]` (truncated). Flush to get `run.id`.
+8. Update each health check row: set `last_run_status = "passed"|"failed"`,
+   `last_run_at = utcnow()`, `last_validation_run_id = run.id`. Do **not**
+   duplicate the stdout onto each health check.
+9. Restore `voyage.status = CHARTED`, commit.
+10. Publish `ValidationPassedEvent` or `ValidationFailedEvent` best-effort.
+11. Return a `ValidationResultResponse`.
+
+**Graph-input helper — `_poneglyphs_to_graph_input`:**
+Parsing `Poneglyph.content` must tolerate corrupt legacy rows. On
+`json.JSONDecodeError`, log a warning with `poneglyph_id` and `phase_number`
+and fall back to an empty dict — do not swallow silently and do not raise.
+The LLM then sees the phase with only its `phase_number`, which is a recoverable
+degradation.
 
 ### 6. REST API — `app/api/v1/doctor.py`
 
@@ -369,10 +459,26 @@ Router with prefix `/voyages/{voyage_id}`, tag `doctor`.
 - `DoctorError` → 422 `{"error": {"code": exc.code, "message": exc.message}}`.
 
 **POST `/validation` rules:**
-- Body: `ValidateCodeRequest` (non-empty `files`).
-- Voyage must be in status `CHARTED` → else 409 `VOYAGE_NOT_TESTABLE`.
-- Must have at least one `HealthCheck` → else 404 `NO_HEALTH_CHECKS`.
-- `DoctorError` → 422.
+- Body: `ValidateCodeRequest` (non-empty `files`, path-validated by the schema).
+- Voyage must be in status `CHARTED` → else 409 `VOYAGE_NOT_CHARTABLE`.
+- **The handler pre-checks for health checks via `doctor_reader.get_health_checks(
+  voyage_id)` and returns 404 `NO_HEALTH_CHECKS` if empty**. Do not let this
+  bubble up as a `DoctorError` → 422 would be wrong; "resource missing" is 404.
+- `DoctorError` raised from `validate_code` → 422.
+
+Inject two dependencies so the 404 check reuses the lightweight reader:
+
+```python
+async def run_validation(
+    voyage_id: uuid.UUID,
+    body: ValidateCodeRequest,
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    doctor_service: DoctorService = Depends(get_doctor_service),
+    doctor_reader: DoctorService = Depends(get_doctor_reader),
+) -> ValidationResultResponse:
+    ...
+```
 
 **GET `/health-checks`**: 200 with list (empty list is OK).
 
@@ -422,6 +528,12 @@ All tests use mocked dependencies (no real LLM, DB, sandbox, or git).
 8. `DoctorOutputSpec` rejects duplicate `file_path`.
 9. `DoctorOutputSpec` accepts multi-phase output.
 10. `ValidateCodeRequest` rejects empty `files`.
+11. `HealthCheckSpec` rejects absolute `file_path` (`/etc/passwd`).
+12. `HealthCheckSpec` rejects traversal (`../../etc/passwd`).
+13. `HealthCheckSpec` rejects nested traversal (`tests/../../etc/passwd`).
+14. `HealthCheckSpec` accepts nested relative path (`tests/unit/test_auth.py`).
+15. `ValidateCodeRequest` rejects absolute path keys in `files`.
+16. `ValidateCodeRequest` rejects traversal keys in `files`.
 
 ### Graph Tests — `tests/test_doctor_graph.py`
 
@@ -477,12 +589,16 @@ string of a valid `PoneglyphContentSpec`.
 19. Calls `ExecutionService.run` with a pytest command.
 20. Returns `status="passed"` with updated counts when `exit_code=0`.
 21. Returns `status="failed"` with updated counts when `exit_code!=0`.
-22. Updates each `HealthCheck.last_run_status`, `.last_run_output`, `.last_run_at`.
+22. Updates each `HealthCheck.last_run_status`, `.last_run_at`,
+    `.last_validation_run_id`.
 23. Commits DB changes exactly once.
 24. Restores voyage status to `CHARTED` after success.
 25. Publishes `ValidationPassedEvent` on pass.
 26. Publishes `ValidationFailedEvent` on fail.
 27. Raises `DoctorError("NO_HEALTH_CHECKS", ...)` when no rows exist; status reset.
+28. Persists exactly one `ValidationRun` row per call with `status`, `exit_code`,
+    counts, and truncated `output`. Each linked `HealthCheck.last_validation_run_id`
+    matches that row's `id`.
 
 **`get_health_checks`:**
 
@@ -501,7 +617,8 @@ string of a valid `PoneglyphContentSpec`.
 7. POST `/validation` returns 200 with `status="passed"`.
 8. POST `/validation` returns 200 with `status="failed"`.
 9. POST `/validation` returns 409 when voyage not `CHARTED`.
-10. POST `/validation` returns 404 when no health checks exist.
+10. POST `/validation` returns 404 when no health checks exist (asserts
+    `doctor_service.validate_code` was **not** awaited).
 11. POST `/validation` returns 422 on `DoctorError`.
 
 ## Constraints
@@ -524,7 +641,22 @@ string of a valid `PoneglyphContentSpec`.
 - Single Dial System call per `write_health_checks` (one JSON batch for all
   phases). Validation failures of the batch fail the whole call — no partial
   writes.
-- `last_run_output` is truncated to the last 4000 chars to keep rows small.
+- `ValidationRun.output` is truncated to the last 4000 chars to keep rows small.
+  `HealthCheck` rows never store stdout — they point to a `ValidationRun` via
+  `last_validation_run_id`.
 - Pytest invocation is `python -m pytest -x --tb=short`. Counting pass/fail is
   best-effort from stdout; when parsing fails, fall back to `exit_code == 0` →
   `passed_count = total_count`, else `failed_count = total_count`.
+- **Path safety is non-negotiable** — validate at the schema layer. LLM-emitted
+  `file_path` values and caller-supplied `files` keys are untrusted input. Sandboxed
+  execution does not protect the best-effort git commit (which runs on the host)
+  from absolute paths or traversal.
+- **Do not add a `metadata_` JSONB on `HealthCheck`.** `framework` is a real
+  column; do not re-serialize it into a schemaless blob. Add a real column when a
+  second field is actually needed.
+- **Malformed Poneglyph content → warn, degrade gracefully.** Log the offending
+  `poneglyph_id` and `phase_number` and fall back to an empty dict; do not raise
+  and do not silently swallow.
+- **404 for NO_HEALTH_CHECKS** is an API-layer pre-check via `doctor_reader`.
+  "Missing prerequisite resource" is not the same semantic as a service-layer
+  invariant violation (which maps to 422).

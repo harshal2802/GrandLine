@@ -136,6 +136,7 @@ async def run_validation(
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
     doctor_service: DoctorService = Depends(get_doctor_service),
+    doctor_reader: DoctorService = Depends(get_doctor_reader),
 ) -> ValidationResultResponse:
     if voyage.status != VoyageStatus.CHARTED.value:
         raise HTTPException(
@@ -144,6 +145,18 @@ async def run_validation(
                 "error": {
                     "code": "VOYAGE_NOT_CHARTABLE",
                     "message": f"Voyage status is {voyage.status}, expected CHARTED",
+                }
+            },
+        )
+
+    existing = await doctor_reader.get_health_checks(voyage_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "NO_HEALTH_CHECKS",
+                    "message": "No health checks exist — run Doctor (write) first",
                 }
             },
         )

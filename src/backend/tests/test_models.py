@@ -9,6 +9,7 @@ from app.models.enums import CheckpointReason, CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
 from app.models.user import User
+from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
 
@@ -24,6 +25,7 @@ def test_all_models_registered_in_metadata() -> None:
         "crew_actions",
         "dial_configs",
         "health_checks",
+        "validation_runs",
     }
     assert expected == table_names
 
@@ -193,9 +195,24 @@ def test_health_check_table_columns() -> None:
         "content",
         "framework",
         "last_run_status",
-        "last_run_output",
         "last_run_at",
-        "metadata",
+        "last_validation_run_id",
         "created_by",
+        "created_at",
+    }
+
+
+def test_validation_run_table_columns() -> None:
+    mapper = inspect(ValidationRun)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "status",
+        "exit_code",
+        "passed_count",
+        "failed_count",
+        "total_count",
+        "output",
         "created_at",
     }

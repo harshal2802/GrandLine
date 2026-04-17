@@ -24,6 +24,7 @@ from app.dial_system.router import DialSystemRouter
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
+from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage
 from app.schemas.doctor import HealthCheckSpec, ValidationResultResponse
@@ -138,7 +139,6 @@ class DoctorService:
                 file_path=spec.file_path,
                 content=spec.content,
                 framework=spec.framework,
-                metadata_={"framework": spec.framework},
                 created_by="doctor",
             )
             self._session.add(hc)
@@ -253,11 +253,24 @@ class DoctorService:
             exec_result.stdout, passed=passed, total=len(health_checks)
         )
         truncated = (exec_result.stdout or "")[-_OUTPUT_TRUNCATE:]
+
+        run = ValidationRun(
+            voyage_id=voyage.id,
+            status=status_str,
+            exit_code=exec_result.exit_code,
+            passed_count=passed_count,
+            failed_count=failed_count,
+            total_count=len(health_checks),
+            output=truncated,
+        )
+        self._session.add(run)
+        await self._session.flush()
+
         now = datetime.now(UTC)
         for hc in health_checks:
             hc.last_run_status = status_str
-            hc.last_run_output = truncated
             hc.last_run_at = now
+            hc.last_validation_run_id = run.id
 
         voyage.status = VoyageStatus.CHARTED.value
         await self._session.commit()
@@ -319,6 +332,11 @@ def _poneglyphs_to_graph_input(poneglyphs: list[Poneglyph]) -> list[dict[str, An
         try:
             content = json.loads(p.content)
         except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "Poneglyph %s (phase %s) has malformed content — using empty fallback",
+                p.id,
+                p.phase_number,
+            )
             content = {}
         out.append(
             {

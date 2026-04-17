@@ -10,6 +10,7 @@ import pytest
 
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
+from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.schemas.dial_system import CompletionResult, TokenUsage
 from app.schemas.execution import ExecutionResult
@@ -505,6 +506,38 @@ class TestValidateCode:
             await service.validate_code(voyage, USER_ID, {"src/a.py": "pass"})
         assert exc_info.value.code == "NO_HEALTH_CHECKS"
         assert voyage.status == VoyageStatus.CHARTED.value
+
+    @pytest.mark.asyncio
+    async def test_persists_validation_run_row(
+        self,
+        service: DoctorService,
+        mock_session: AsyncMock,
+        mock_execution: AsyncMock,
+    ) -> None:
+        mock_execution.run.return_value = _exec_result(0, "===== 2 passed in 0.01s =====")
+        hc = HealthCheck(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            phase_number=1,
+            file_path="tests/a.py",
+            content="x",
+            framework="pytest",
+        )
+        result_mock = MagicMock()
+        result_mock.scalars.return_value.all.return_value = [hc]
+        mock_session.execute.return_value = result_mock
+
+        voyage = _mock_voyage()
+        await service.validate_code(voyage, USER_ID, {"src/a.py": "pass"})
+
+        added = [call.args[0] for call in mock_session.add.call_args_list]
+        runs = [o for o in added if isinstance(o, ValidationRun)]
+        assert len(runs) == 1
+        assert runs[0].status == "passed"
+        assert runs[0].exit_code == 0
+        assert runs[0].passed_count == 2
+        assert runs[0].output  # stored once, not per health-check
+        assert hc.last_validation_run_id == runs[0].id
 
 
 class TestGetHealthChecks:

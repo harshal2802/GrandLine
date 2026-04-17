@@ -22,5 +22,6 @@ from app.models.dial_config import DialConfig  # noqa: E402, F401
 from app.models.health_check import HealthCheck  # noqa: E402, F401
 from app.models.poneglyph import Poneglyph  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
+from app.models.validation_run import ValidationRun  # noqa: E402, F401
 from app.models.vivre_card import VivreCard  # noqa: E402, F401
 from app.models.voyage import Voyage, VoyagePlan  # noqa: E402, F401

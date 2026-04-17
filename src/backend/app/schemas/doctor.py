@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+import posixpath
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.health_check import HealthCheckRead
+
+
+def _validate_relative_path(path: str) -> str:
+    """Reject absolute paths and path-traversal segments."""
+    if path.startswith("/") or path.startswith("\\"):
+        raise ValueError(f"Path must be relative, got {path!r}")
+    if ":" in path.split("/")[0]:
+        raise ValueError(f"Path must not be a drive/scheme, got {path!r}")
+    normalized = posixpath.normpath(path)
+    if normalized.startswith("..") or "/../" in f"/{normalized}/":
+        raise ValueError(f"Path traversal not allowed in {path!r}")
+    if normalized in (".", ""):
+        raise ValueError(f"Path must not be empty, got {path!r}")
+    return path
 
 
 class HealthCheckSpec(BaseModel):
@@ -17,6 +32,11 @@ class HealthCheckSpec(BaseModel):
     file_path: str = Field(min_length=1, max_length=500)
     content: str = Field(min_length=1)
     framework: Literal["pytest", "vitest"] = "pytest"
+
+    @field_validator("file_path")
+    @classmethod
+    def _validate_file_path(cls, v: str) -> str:
+        return _validate_relative_path(v)
 
 
 class DoctorOutputSpec(BaseModel):
@@ -50,6 +70,13 @@ class HealthCheckListResponse(BaseModel):
 
 class ValidateCodeRequest(BaseModel):
     files: dict[str, str] = Field(min_length=1)
+
+    @field_validator("files")
+    @classmethod
+    def _validate_file_paths(cls, v: dict[str, str]) -> dict[str, str]:
+        for path in v:
+            _validate_relative_path(path)
+        return v
 
 
 class ValidationResultResponse(BaseModel):
