@@ -6,6 +6,7 @@ from app.models import Base
 from app.models.crew_action import CrewAction
 from app.models.dial_config import DialConfig
 from app.models.enums import CheckpointReason, CrewRole, VoyageStatus
+from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
 from app.models.user import User
 from app.models.vivre_card import VivreCard
@@ -22,6 +23,7 @@ def test_all_models_registered_in_metadata() -> None:
         "vivre_cards",
         "crew_actions",
         "dial_configs",
+        "health_checks",
     }
     assert expected == table_names
 
@@ -177,3 +179,23 @@ def test_crew_action_crew_member_indexed() -> None:
     table = CrewAction.__table__
     crew_col = table.c.crew_member
     assert crew_col.index is True
+
+
+def test_health_check_table_columns() -> None:
+    mapper = inspect(HealthCheck)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "poneglyph_id",
+        "phase_number",
+        "file_path",
+        "content",
+        "framework",
+        "last_run_status",
+        "last_run_output",
+        "last_run_at",
+        "metadata",
+        "created_by",
+        "created_at",
+    }
