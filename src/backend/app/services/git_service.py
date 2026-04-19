@@ -270,6 +270,24 @@ class GitService:
             base=data["base"]["ref"],
         )
 
+    async def get_head_sha(
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        ref: str,
+    ) -> str:
+        """Resolve a branch/tag/SHA-ish to a full commit SHA for audit."""
+        _validate_branch_component(ref)
+        sandbox_id = self._get_sandbox(voyage_id)
+        stdout = await self._run(
+            sandbox_id,
+            f"cd {REPO_PATH} && git rev-parse {shlex.quote(ref)}^{{commit}}",
+        )
+        sha = stdout.strip()
+        if not sha:
+            raise GitError(f"GIT_REF_UNRESOLVABLE: {ref!r}")
+        return sha
+
     async def get_log(
         self,
         voyage_id: uuid.UUID,

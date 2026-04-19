@@ -7,6 +7,7 @@ from app.api.v1.doctor import router as doctor_router
 from app.api.v1.execution import router as execution_router
 from app.api.v1.git import router as git_router
 from app.api.v1.health import router as health_router
+from app.api.v1.helmsman import router as helmsman_router
 from app.api.v1.navigator import router as navigator_router
 from app.api.v1.shipwright import router as shipwright_router
 from app.api.v1.vivre_cards import router as vivre_cards_router
@@ -22,3 +23,4 @@ v1_router.include_router(captain_router)
 v1_router.include_router(navigator_router)
 v1_router.include_router(doctor_router)
 v1_router.include_router(shipwright_router)
+v1_router.include_router(helmsman_router)

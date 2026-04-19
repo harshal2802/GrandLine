@@ -452,6 +452,29 @@ class TestBranchNameValidation:
             await service.check_conflicts(VOYAGE_ID, USER_ID, "; cat /etc/passwd", "main")
 
 
+class TestGetHeadSha:
+    @pytest.mark.asyncio
+    async def test_returns_stripped_sha(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute = AsyncMock(return_value=_exec_result(stdout="deadbeef1234\n"))
+
+        sha = await service.get_head_sha(VOYAGE_ID, USER_ID, "main")
+
+        assert sha == "deadbeef1234"
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "rev-parse" in cmd
+        assert "main" in cmd
+
+    @pytest.mark.asyncio
+    async def test_rejects_shell_metacharacters_in_ref(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.get_head_sha(VOYAGE_ID, USER_ID, "$(whoami)")
+
+
 class TestInjectToken:
     def test_preserves_port(self) -> None:
         from app.services.git_service import _inject_token
