@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import JWTError, decode_token
 from app.den_den_mushi.mushi import DenDenMushi
+from app.deployment.backend import DeploymentBackend
 from app.dial_system.factory import build_router_from_config
 from app.dial_system.rate_limiter import RateLimiter
 from app.dial_system.router import DialSystemRouter
@@ -110,6 +111,11 @@ def get_execution_service(request: Request) -> ExecutionService:
 def get_git_service(request: Request) -> GitService:
     svc: GitService = request.app.state.git_service
     return svc
+
+
+def get_deployment_backend(request: Request) -> DeploymentBackend:
+    backend: DeploymentBackend = request.app.state.deployment_backend
+    return backend
 
 
 async def get_dial_router(

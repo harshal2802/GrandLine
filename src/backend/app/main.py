@@ -9,6 +9,7 @@ from app.api.v1.router import v1_router
 from app.core.config import settings
 from app.core.middleware import DefaultDenyMiddleware
 from app.den_den_mushi.mushi import DenDenMushi
+from app.deployment.in_process import InProcessDeploymentBackend
 from app.execution.factory import create_backend, create_git_backend
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
@@ -26,8 +27,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     git_backend = create_git_backend(settings)
     app.state.git_service = GitService(git_backend, settings)
 
+    app.state.deployment_backend = InProcessDeploymentBackend()
+
     yield
 
+    await app.state.deployment_backend.close()
     await app.state.git_service.cleanup_all()
     await git_backend.close()
     await app.state.execution_service.cleanup_all()
