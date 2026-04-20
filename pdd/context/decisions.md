@@ -197,6 +197,14 @@
 
 ---
 
+## Decision: Pipeline transition guards as pure predicates
+**Date**: 2026-04-20
+**What was decided**: Added `app/services/pipeline_guards.py` with six `require_can_enter_*` helpers (`planning`, `pdd`, `tdd`, `building`, `reviewing`, `deploying`) and a single `PipelineError(code, message)` exception distinguished by `.code`. Guards take DB-loaded objects (voyage, plan, poneglyphs, health_checks, build_artifacts, validation_run) and raise on violation — no DB queries, no LLM calls, no event publishing, no state mutation. Error code taxonomy is 1:1 with guards: `VOYAGE_NOT_PLANNABLE`, `PLAN_MISSING`, `PONEGLYPHS_INCOMPLETE`, `HEALTH_CHECKS_INCOMPLETE`, `BUILD_INCOMPLETE`, `VALIDATION_NOT_PASSED`. "Can enter reviewing" checks both `BuildArtifact` presence AND `voyage.phase_status[str(phase)] == "BUILT"` for every planned phase — the first consumer of the Phase 15.1 `phase_status` gate.
+**Why**: The master pipeline has six stage transitions, each with different pre-conditions. Putting the checks inline in the graph nodes (Phase 15.3) would scatter invariants across six files and tangle scheduling with validation. Centralizing them as pure predicates means: one place to reason about "what does a voyage need to enter stage X," trivially unit-testable (no DB fixtures — 33 tests, 0.03s), and reusable as the engine for skip-already-satisfied-stages on resume. When a voyage resumes, the pipeline calls the *next* guard; if it passes, the stage's output already exists, so skip the stage + its LLM call entirely. That's token-cost savings on re-run after a fix.
+**Don't suggest**: Merging the guard module into `pipeline_service.py` (the separation is the point), one-exception-per-guard (`PlanMissingError`, `PoneglyphsIncompleteError` — unnecessary class sprawl, use `.code`), guards performing DB lookups (couples them to sessions and makes unit tests require mocked sessions), adding guards for status transitions the pipeline doesn't use (e.g. `require_can_enter_completed` — `finalize_node` owns that)
+
+---
+
 ## Decision: Configurable Shipwright concurrency via DialConfig (not env/global)
 **Date**: 2026-04-19
 **What was decided**: Added `ShipwrightRoleConfig.max_concurrency: int | None` (Pydantic `ge=1 le=10`) to `DialConfig.role_mapping.shipwright`. `resolve_shipwright_max_concurrency()` reads the value at pipeline-start time and falls back to `1` on any missing key, non-dict shape, validation failure, or `None`. No migration — piggybacks on the existing `role_mapping` JSONB.
