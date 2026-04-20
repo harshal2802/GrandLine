@@ -20,7 +20,6 @@ from app.api.v1.navigator import get_navigator_reader
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.router import DialSystemRouter
 from app.models import get_db
-from app.models.enums import VoyageStatus
 from app.models.user import User
 from app.models.voyage import Voyage
 from app.schemas.build_artifact import BuildArtifactRead
@@ -74,17 +73,6 @@ async def build_phase(
     navigator_reader: NavigatorService = Depends(get_navigator_reader),
     doctor_reader: DoctorService = Depends(get_doctor_reader),
 ) -> BuildResultResponse:
-    if voyage.status != VoyageStatus.CHARTED.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error": {
-                    "code": "VOYAGE_NOT_BUILDABLE",
-                    "message": (f"Voyage status is {voyage.status}, expected CHARTED"),
-                }
-            },
-        )
-
     poneglyphs = await navigator_reader.get_poneglyphs(voyage_id)
     poneglyph = next((p for p in poneglyphs if p.phase_number == phase_number), None)
     if poneglyph is None:
@@ -115,8 +103,13 @@ async def build_phase(
             voyage, phase_number, poneglyph, phase_health_checks, user.id
         )
     except ShipwrightError as exc:
+        status_code = (
+            status.HTTP_409_CONFLICT
+            if exc.code == "PHASE_NOT_BUILDABLE"
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status_code,
             detail={"error": {"code": exc.code, "message": exc.message}},
         ) from exc
 

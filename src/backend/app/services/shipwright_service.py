@@ -22,7 +22,7 @@ from app.den_den_mushi.events import CodeGeneratedEvent, TestsPassedEvent
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.router import DialSystemRouter
 from app.models.build_artifact import BuildArtifact
-from app.models.enums import CrewRole, VoyageStatus
+from app.models.enums import CrewRole
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
 from app.models.shipwright_run import ShipwrightRun
@@ -36,6 +36,12 @@ logger = logging.getLogger(__name__)
 
 SHIPWRIGHT_MAX_ITERATIONS = 3
 _OUTPUT_TRUNCATE = 4000
+
+PHASE_STATUS_PENDING = "PENDING"
+PHASE_STATUS_BUILDING = "BUILDING"
+PHASE_STATUS_BUILT = "BUILT"
+PHASE_STATUS_FAILED = "FAILED"
+_PHASE_BUILDABLE = frozenset({PHASE_STATUS_PENDING, PHASE_STATUS_FAILED})
 
 
 class ShipwrightError(Exception):
@@ -94,7 +100,18 @@ class ShipwrightService:
                 ),
             )
 
-        voyage.status = VoyageStatus.BUILDING.value
+        phase_key = str(phase_number)
+        current_phase_status = voyage.phase_status.get(phase_key, PHASE_STATUS_PENDING)
+        if current_phase_status not in _PHASE_BUILDABLE:
+            raise ShipwrightError(
+                "PHASE_NOT_BUILDABLE",
+                (
+                    f"Phase {phase_number} is {current_phase_status}; "
+                    f"must be {PHASE_STATUS_PENDING} or {PHASE_STATUS_FAILED}"
+                ),
+            )
+
+        self._set_phase_status(voyage, phase_key, PHASE_STATUS_BUILDING)
         await self._session.flush()
 
         state: dict[str, Any] = {
@@ -147,7 +164,7 @@ class ShipwrightService:
 
                 state["last_test_output"] = state.get("stdout", "")
         except Exception:
-            voyage.status = VoyageStatus.CHARTED.value
+            self._set_phase_status(voyage, phase_key, PHASE_STATUS_FAILED)
             await self._session.flush()
             raise
 
@@ -212,7 +229,9 @@ class ShipwrightService:
         )
         self._session.add(card)
 
-        voyage.status = VoyageStatus.CHARTED.value
+        self._set_phase_status(
+            voyage, phase_key, PHASE_STATUS_BUILT if passed else PHASE_STATUS_FAILED
+        )
         await self._session.commit()
         await self._session.refresh(run)
         for artifact in artifacts:
@@ -243,6 +262,12 @@ class ShipwrightService:
             file_count=len(artifacts),
             summary=truncated[-500:],
         )
+
+    def _set_phase_status(self, voyage: Voyage, phase_key: str, status: str) -> None:
+        """Assign a fresh dict so SQLAlchemy sees the JSONB column as dirty."""
+        new_status = dict(voyage.phase_status or {})
+        new_status[phase_key] = status
+        voyage.phase_status = new_status
 
     async def _checkpoint_iteration(
         self,

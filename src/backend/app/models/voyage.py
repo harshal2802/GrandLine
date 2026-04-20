@@ -32,6 +32,9 @@ class Voyage(Base):
         String(50), default=VoyageStatus.CHARTED.value, nullable=False
     )
     target_repo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    phase_status: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

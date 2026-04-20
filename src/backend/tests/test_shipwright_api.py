@@ -146,25 +146,26 @@ class TestBuildPhaseEndpoint:
         sw.build_code.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_returns_409_if_not_charted(self) -> None:
+    async def test_returns_409_when_service_raises_phase_not_buildable(self) -> None:
         from app.api.v1.shipwright import build_phase
 
         sw = _mock_shipwright_service()
-        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
+        sw.build_code.side_effect = ShipwrightError(
+            "PHASE_NOT_BUILDABLE", "Phase 1 is already BUILDING"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await build_phase(
                 VOYAGE_ID,
                 1,
                 _mock_user(),
-                voyage,
+                _mock_voyage(),
                 sw,
                 _mock_navigator_reader(),
                 _mock_doctor_reader(),
             )
         assert exc_info.value.status_code == 409
-        assert exc_info.value.detail["error"]["code"] == "VOYAGE_NOT_BUILDABLE"
-        sw.build_code.assert_not_awaited()
+        assert exc_info.value.detail["error"]["code"] == "PHASE_NOT_BUILDABLE"
 
     @pytest.mark.asyncio
     async def test_returns_404_when_poneglyph_missing(self) -> None:

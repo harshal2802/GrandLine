@@ -185,6 +185,23 @@
 **What was decided**: v1 of the Shipwright enforces a single in-flight invocation per voyage via the `voyage.status == CHARTED` gate (transitions to `BUILDING` during the call). True per-phase parallelism is deferred until a `phase_status` map is added to the voyage model.
 **Why**: Shipping a correct sequential path first. Concurrent invocations on the same voyage would race the `voyage.status` transition and the `delete-before-insert` step for `BuildArtifact`. A `phase_status` refactor is the right long-term fix but premature for the first Shipwright cut. Phase 15's voyage pipeline will sequence phase builds; user-level fan-out across phases waits for the refactor.
 **Don't suggest**: Removing the 409 gate, introducing a voyage-level lock in Redis (heavier than needed), bolting on a phase_status column without a migration plan
+**Superseded by**: 2026-04-19 — Shipwright per-phase status gate (Phase 15.1 refactor)
+
+---
+
+## Decision: Shipwright per-phase status gate (Phase 15.1 refactor)
+**Date**: 2026-04-19
+**What was decided**: Replaced `voyage.status` gate with a `Voyage.phase_status` JSONB map keyed by `str(phase_number)` with values `PENDING | BUILDING | BUILT | FAILED` (module-level string constants in `shipwright_service.py`, no SQLAlchemy enum). `ShipwrightService.build_code` gates on `phase_status.get(key, "PENDING") in {"PENDING", "FAILED"}` and raises `ShipwrightError("PHASE_NOT_BUILDABLE")` → HTTP 409 when the phase is already `BUILDING` or `BUILT`. `voyage.status` is no longer touched by the service. `BuildArtifact` delete-before-insert remains scoped to `(voyage_id, phase_number)`.
+**Why**: Phase 15's voyage pipeline wants to build independent phases in parallel (topological layers bounded by `asyncio.Semaphore`). The voyage-level gate made concurrent phase builds impossible — any second invocation 409'd, even for a different phase. Keeping `voyage.status` untouched lets the master pipeline own the outer `CHARTED → BUILDING → COMPLETED` transitions without racing the Shipwright. JSONB over a new table avoids a join on every gate check; dict-copy-before-assign keeps SQLAlchemy's JSONB dirty-tracking happy without `flag_modified`. Per-phase re-buildability (FAILED → buildable) is a pipeline-retry requirement.
+**Don't suggest**: Reinstating the `voyage.status` gate, using a SQLAlchemy Enum column (JSONB values are more flexible and cheaper to migrate), introducing `flag_modified` everywhere instead of fresh-dict-assign, adding per-phase row locks (the status map is a single row update)
+
+---
+
+## Decision: Configurable Shipwright concurrency via DialConfig (not env/global)
+**Date**: 2026-04-19
+**What was decided**: Added `ShipwrightRoleConfig.max_concurrency: int | None` (Pydantic `ge=1 le=10`) to `DialConfig.role_mapping.shipwright`. `resolve_shipwright_max_concurrency()` reads the value at pipeline-start time and falls back to `1` on any missing key, non-dict shape, validation failure, or `None`. No migration — piggybacks on the existing `role_mapping` JSONB.
+**Why**: Different users have different provider plans — a free-tier Anthropic key can't sustain 5 concurrent Shipwrights, a Tier-4 key easily can. Hard-coding a global max would either starve high-tier users or overload low-tier ones. Per-voyage scoping (via DialConfig) means the knob sits next to the other provider choices the user already tunes. The `1..10` range is a safety rail — parallelism beyond 10 typically hits rate limits anyway and burns tokens on retries. Fail-safe-to-1 means a malformed config never triggers a fan-out storm.
+**Don't suggest**: Global env var, per-request query param, removing the upper bound, raising on invalid config (silent fallback preserves "voyages always progress")
 
 ---
 

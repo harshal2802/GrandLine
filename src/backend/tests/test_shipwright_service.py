@@ -15,6 +15,10 @@ from app.models.shipwright_run import ShipwrightRun
 from app.models.vivre_card import VivreCard
 from app.schemas.shipwright import BuildArtifactSpec
 from app.services.shipwright_service import (
+    PHASE_STATUS_BUILDING,
+    PHASE_STATUS_BUILT,
+    PHASE_STATUS_FAILED,
+    PHASE_STATUS_PENDING,
     SHIPWRIGHT_MAX_ITERATIONS,
     ShipwrightError,
     ShipwrightService,
@@ -28,12 +32,14 @@ PONEGLYPH_ID = uuid.uuid4()
 def _mock_voyage(
     status: str = VoyageStatus.CHARTED.value,
     target_repo: str | None = None,
+    phase_status: dict[str, str] | None = None,
 ) -> MagicMock:
     voyage = MagicMock()
     voyage.id = VOYAGE_ID
     voyage.user_id = USER_ID
     voyage.status = status
     voyage.target_repo = target_repo
+    voyage.phase_status = phase_status if phase_status is not None else {}
     return voyage
 
 
@@ -79,11 +85,12 @@ def _graph_state(
     failed: int = 0,
     total: int = 1,
     generated_files: list[BuildArtifactSpec] | None = None,
+    phase_number: int = 1,
 ) -> dict[str, Any]:
     if generated_files is None:
         generated_files = [
             BuildArtifactSpec(
-                file_path="src/phase1.py",
+                file_path=f"src/phase{phase_number}.py",
                 content="def run(): return True",
                 language="python",
             )
@@ -91,7 +98,7 @@ def _graph_state(
     return {
         "voyage_id": VOYAGE_ID,
         "user_id": USER_ID,
-        "phase_number": 1,
+        "phase_number": phase_number,
         "poneglyph": {},
         "health_checks": [],
         "iteration": 1,
@@ -161,21 +168,149 @@ def service(
     return svc
 
 
-class TestBuildCodeHappyPath:
+class TestPhaseStatusConstants:
+    def test_constants_have_expected_values(self) -> None:
+        assert PHASE_STATUS_PENDING == "PENDING"
+        assert PHASE_STATUS_BUILDING == "BUILDING"
+        assert PHASE_STATUS_BUILT == "BUILT"
+        assert PHASE_STATUS_FAILED == "FAILED"
+
+
+class TestBuildCodeGate:
     @pytest.mark.asyncio
-    async def test_sets_status_to_building_during_call(
-        self, service: ShipwrightService, mock_session: AsyncMock
+    async def test_pending_phase_is_buildable(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        result = await service.build_code(
+            voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
+        )
+        assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_missing_phase_key_is_buildable(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={})
+        result = await service.build_code(
+            voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
+        )
+        assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_failed_phase_is_rebuildable(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_FAILED})
+        result = await service.build_code(
+            voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
+        )
+        assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_building_phase_raises_phase_not_buildable(
+        self, service: ShipwrightService
     ) -> None:
-        voyage = _mock_voyage()
-        observed: list[str] = []
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_BUILDING})
+        with pytest.raises(ShipwrightError) as exc_info:
+            await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert exc_info.value.code == "PHASE_NOT_BUILDABLE"
+        service._graph.ainvoke.assert_not_awaited()  # type: ignore[attr-defined]
 
-        async def record_flush() -> None:
-            observed.append(voyage.status)
+    @pytest.mark.asyncio
+    async def test_built_phase_raises_phase_not_buildable(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_BUILT})
+        with pytest.raises(ShipwrightError) as exc_info:
+            await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert exc_info.value.code == "PHASE_NOT_BUILDABLE"
+        service._graph.ainvoke.assert_not_awaited()  # type: ignore[attr-defined]
 
-        mock_session.flush.side_effect = record_flush
+    @pytest.mark.asyncio
+    async def test_vitest_check_precedes_phase_gate(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_BUILT})
+        with pytest.raises(ShipwrightError) as exc_info:
+            await service.build_code(
+                voyage,
+                1,
+                _mock_poneglyph(),
+                [_mock_health_check(framework="vitest")],
+                USER_ID,
+            )
+        assert exc_info.value.code == "VITEST_NOT_SUPPORTED"
+
+
+class TestPhaseStatusTransitions:
+    @pytest.mark.asyncio
+    async def test_success_transitions_pending_to_built(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
         await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
-        assert VoyageStatus.BUILDING.value in observed
+        assert voyage.phase_status["1"] == PHASE_STATUS_BUILT
 
+    @pytest.mark.asyncio
+    async def test_max_iterations_transitions_to_failed(self, service: ShipwrightService) -> None:
+        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[_graph_state(exit_code=1, stdout="boom")] * SHIPWRIGHT_MAX_ITERATIONS
+        )
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.phase_status["1"] == PHASE_STATUS_FAILED
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_transitions_to_failed(self, service: ShipwrightService) -> None:
+        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[_graph_state(error="parse failed")] * SHIPWRIGHT_MAX_ITERATIONS
+        )
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        with pytest.raises(ShipwrightError):
+            await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.phase_status["1"] == PHASE_STATUS_FAILED
+
+    @pytest.mark.asyncio
+    async def test_does_not_touch_voyage_status(self, service: ShipwrightService) -> None:
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.status == VoyageStatus.CHARTED.value
+
+    @pytest.mark.asyncio
+    async def test_does_not_touch_voyage_status_on_failure(
+        self, service: ShipwrightService
+    ) -> None:
+        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[_graph_state(exit_code=1)] * SHIPWRIGHT_MAX_ITERATIONS
+        )
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.status == VoyageStatus.CHARTED.value
+
+    @pytest.mark.asyncio
+    async def test_preserves_other_phase_statuses_on_success(
+        self, service: ShipwrightService
+    ) -> None:
+        voyage = _mock_voyage(
+            phase_status={
+                "1": PHASE_STATUS_PENDING,
+                "2": PHASE_STATUS_BUILT,
+                "3": PHASE_STATUS_FAILED,
+            }
+        )
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.phase_status["1"] == PHASE_STATUS_BUILT
+        assert voyage.phase_status["2"] == PHASE_STATUS_BUILT
+        assert voyage.phase_status["3"] == PHASE_STATUS_FAILED
+
+    @pytest.mark.asyncio
+    async def test_preserves_other_phase_statuses_on_failure(
+        self, service: ShipwrightService
+    ) -> None:
+        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[_graph_state(exit_code=1)] * SHIPWRIGHT_MAX_ITERATIONS
+        )
+        voyage = _mock_voyage(
+            phase_status={
+                "1": PHASE_STATUS_PENDING,
+                "2": PHASE_STATUS_BUILT,
+            }
+        )
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+        assert voyage.phase_status["1"] == PHASE_STATUS_FAILED
+        assert voyage.phase_status["2"] == PHASE_STATUS_BUILT
+
+
+class TestBuildCodeHappyPath:
     @pytest.mark.asyncio
     async def test_invokes_graph_on_iteration_one(self, service: ShipwrightService) -> None:
         await service.build_code(
@@ -205,17 +340,19 @@ class TestBuildCodeHappyPath:
         assert runs[0].iteration_count == 1
 
     @pytest.mark.asyncio
-    async def test_deletes_existing_build_artifacts_on_pass(
+    async def test_deletes_existing_build_artifacts_scoped_to_phase(
         self, service: ShipwrightService, mock_session: AsyncMock
     ) -> None:
         from sqlalchemy.sql.dml import Delete
 
         await service.build_code(
-            _mock_voyage(), 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
+            _mock_voyage(), 2, _mock_poneglyph(phase_number=2), [_mock_health_check(2)], USER_ID
         )
         executed = [c.args[0] for c in mock_session.execute.call_args_list]
         deletes = [s for s in executed if isinstance(s, Delete)]
         assert len(deletes) == 1
+        compiled = str(deletes[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "phase_number = 2" in compiled
 
     @pytest.mark.asyncio
     async def test_persists_one_build_artifact_per_generated_file(
@@ -267,12 +404,6 @@ class TestBuildCodeHappyPath:
             _mock_voyage(), 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
         )
         mock_session.commit.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_restores_charted_status_after_success(self, service: ShipwrightService) -> None:
-        voyage = _mock_voyage()
-        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
-        assert voyage.status == VoyageStatus.CHARTED.value
 
     @pytest.mark.asyncio
     async def test_publishes_code_generated_and_tests_passed_events(
@@ -399,15 +530,6 @@ class TestBuildCodeIterationLoop:
         mock_mushi.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_restores_charted_on_max_iterations(self, service: ShipwrightService) -> None:
-        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
-            side_effect=[_graph_state(exit_code=1)] * SHIPWRIGHT_MAX_ITERATIONS
-        )
-        voyage = _mock_voyage()
-        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
-        assert voyage.status == VoyageStatus.CHARTED.value
-
-    @pytest.mark.asyncio
     async def test_persists_max_iterations_run(
         self, service: ShipwrightService, mock_session: AsyncMock
     ) -> None:
@@ -450,14 +572,11 @@ class TestBuildCodeErrorPaths:
         with pytest.raises(ShipwrightError) as exc_info:
             await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
         assert exc_info.value.code == "BUILD_PARSE_FAILED"
-        assert voyage.status == VoyageStatus.CHARTED.value
-        # The run row must be persisted even on parse failure so it can be inspected.
         added = [c.args[0] for c in mock_session.add.call_args_list]
         runs = [o for o in added if isinstance(o, ShipwrightRun)]
         assert len(runs) == 1
         assert runs[0].status == "failed"
         assert runs[0].iteration_count == SHIPWRIGHT_MAX_ITERATIONS
-        # No BuildArtifact rows should be added on parse failure.
         assert not [o for o in added if isinstance(o, BuildArtifact)]
         mock_session.commit.assert_awaited()
 
