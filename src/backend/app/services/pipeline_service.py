@@ -98,9 +98,18 @@ class PipelineService:
         try:
             require_can_enter_planning(voyage)
         except PipelineError as exc:
-            raise exc
+            await self._publish_failed(voyage.id, exc.code, exc.message, "PLANNING")
+            raise
 
-        resolved_concurrency = await self._resolve_concurrency(voyage.id, max_parallel_shipwrights)
+        try:
+            resolved_concurrency = await self._resolve_concurrency(
+                voyage.id, max_parallel_shipwrights
+            )
+        except PipelineError as exc:
+            await self._publish_failed(voyage.id, exc.code, exc.message, "PLANNING")
+            raise
+
+        run_start = time.monotonic()
 
         await self._publish(
             voyage.id,
@@ -131,6 +140,7 @@ class PipelineService:
             "deploy_tier": deploy_tier,
             "max_parallel_shipwrights": resolved_concurrency,
             "task": task,
+            "start_monotonic": run_start,
             "plan_id": None,
             "poneglyph_count": 0,
             "health_check_count": 0,
@@ -141,7 +151,6 @@ class PipelineService:
             "paused": False,
         }
 
-        run_start = time.monotonic()
         try:
             final_state: PipelineState = await graph.ainvoke(initial_state)  # type: ignore[assignment]
         except Exception as exc:
@@ -275,6 +284,18 @@ class PipelineService:
                 voyage_id,
                 exc_info=True,
             )
+
+    async def _publish_failed(
+        self, voyage_id: uuid.UUID, code: str, message: str, stage: str
+    ) -> None:
+        await self._publish(
+            voyage_id,
+            PipelineFailedEvent(
+                voyage_id=voyage_id,
+                source_role=CrewRole.CAPTAIN,
+                payload={"stage": stage, "code": code, "message": message},
+            ),
+        )
 
     async def _mark_failed(self, voyage_id: uuid.UUID, code: str, message: str, stage: str) -> None:
         result = await self._session.execute(select(Voyage).where(Voyage.id == voyage_id))

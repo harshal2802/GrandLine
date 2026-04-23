@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import time
 import uuid
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,6 +15,25 @@ from app.services.pipeline_service import PipelineService
 
 VOYAGE_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
+
+
+def _happy_final_state() -> dict:
+    return {
+        "voyage_id": VOYAGE_ID,
+        "user_id": USER_ID,
+        "deploy_tier": "preview",
+        "max_parallel_shipwrights": 1,
+        "task": "t",
+        "start_monotonic": time.monotonic(),
+        "plan_id": None,
+        "poneglyph_count": 0,
+        "health_check_count": 0,
+        "build_artifact_count": 0,
+        "validation_run_id": None,
+        "deployment_id": None,
+        "error": None,
+        "paused": False,
+    }
 
 
 def _mock_voyage(
@@ -80,9 +99,21 @@ def service(
     )
 
 
+def _patch_graph(monkeypatch: pytest.MonkeyPatch, final_state: dict) -> AsyncMock:
+    mock_graph = AsyncMock()
+    mock_graph.ainvoke = AsyncMock(return_value=final_state)
+    monkeypatch.setattr(
+        "app.services.pipeline_service.build_pipeline_graph",
+        lambda _ctx: mock_graph,
+    )
+    return mock_graph
+
+
 class TestStartGuardFailure:
     @pytest.mark.asyncio
-    async def test_already_building_raises_pipeline_error(self, service: PipelineService) -> None:
+    async def test_already_building_raises_pipeline_error(
+        self, service: PipelineService, mock_mushi: AsyncMock
+    ) -> None:
         voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
         with pytest.raises(PipelineError) as exc:
             await service.start(voyage, USER_ID, "task")
@@ -94,6 +125,29 @@ class TestStartGuardFailure:
         with pytest.raises(PipelineError):
             await service.start(voyage, USER_ID, "task")
 
+    @pytest.mark.asyncio
+    async def test_pre_flight_guard_failure_publishes_pipeline_failed(
+        self, service: PipelineService, mock_mushi: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
+        with pytest.raises(PipelineError):
+            await service.start(voyage, USER_ID, "task")
+        published = [c.args[1] for c in mock_mushi.publish.call_args_list]
+        assert any(isinstance(e, PipelineFailedEvent) for e in published)
+
+    @pytest.mark.asyncio
+    async def test_invalid_concurrency_publishes_pipeline_failed(
+        self, service: PipelineService, mock_mushi: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage()
+        with pytest.raises(PipelineError) as exc:
+            await service.start(voyage, USER_ID, "task", max_parallel_shipwrights=99)
+        assert exc.value.code == "INVALID_CONCURRENCY"
+        published = [c.args[1] for c in mock_mushi.publish.call_args_list]
+        failed_events = [e for e in published if isinstance(e, PipelineFailedEvent)]
+        assert len(failed_events) == 1
+        assert failed_events[0].payload["code"] == "INVALID_CONCURRENCY"
+
 
 class TestStartHappyPath:
     @pytest.mark.asyncio
@@ -103,28 +157,7 @@ class TestStartHappyPath:
         mock_mushi: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        mock_graph = AsyncMock()
-        mock_graph.ainvoke = AsyncMock(
-            return_value={
-                "voyage_id": VOYAGE_ID,
-                "user_id": USER_ID,
-                "deploy_tier": "preview",
-                "max_parallel_shipwrights": 1,
-                "task": "t",
-                "plan_id": None,
-                "poneglyph_count": 0,
-                "health_check_count": 0,
-                "build_artifact_count": 0,
-                "validation_run_id": None,
-                "deployment_id": None,
-                "error": None,
-                "paused": False,
-            }
-        )
-        monkeypatch.setattr(
-            "app.services.pipeline_service.build_pipeline_graph",
-            lambda _ctx: mock_graph,
-        )
+        _patch_graph(monkeypatch, _happy_final_state())
 
         voyage = _mock_voyage()
         await service.start(voyage, USER_ID, "Build login")
@@ -138,30 +171,34 @@ class TestStartHappyPath:
         service: PipelineService,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        state = _happy_final_state()
+        state["paused"] = True
+        _patch_graph(monkeypatch, state)
+        voyage = _mock_voyage()
+        await service.start(voyage, USER_ID, "task")
+
+    @pytest.mark.asyncio
+    async def test_start_monotonic_threaded_into_initial_state(
+        self,
+        service: PipelineService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict = {}
+
+        async def capture_ainvoke(state: dict) -> dict:
+            captured.update(state)
+            return _happy_final_state()
+
         mock_graph = AsyncMock()
-        mock_graph.ainvoke = AsyncMock(
-            return_value={
-                "voyage_id": VOYAGE_ID,
-                "user_id": USER_ID,
-                "deploy_tier": "preview",
-                "max_parallel_shipwrights": 1,
-                "task": "t",
-                "plan_id": None,
-                "poneglyph_count": 0,
-                "health_check_count": 0,
-                "build_artifact_count": 0,
-                "validation_run_id": None,
-                "deployment_id": None,
-                "error": None,
-                "paused": True,
-            }
-        )
+        mock_graph.ainvoke = capture_ainvoke
         monkeypatch.setattr(
             "app.services.pipeline_service.build_pipeline_graph",
             lambda _ctx: mock_graph,
         )
         voyage = _mock_voyage()
         await service.start(voyage, USER_ID, "task")
+        assert "start_monotonic" in captured
+        assert isinstance(captured["start_monotonic"], float)
 
 
 class TestStartFailurePath:
@@ -169,32 +206,13 @@ class TestStartFailurePath:
     async def test_error_in_final_state_raises_pipeline_error(
         self, service: PipelineService, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        mock_graph = AsyncMock()
-        mock_graph.ainvoke = AsyncMock(
-            return_value={
-                "voyage_id": VOYAGE_ID,
-                "user_id": USER_ID,
-                "deploy_tier": "preview",
-                "max_parallel_shipwrights": 1,
-                "task": "t",
-                "plan_id": None,
-                "poneglyph_count": 0,
-                "health_check_count": 0,
-                "build_artifact_count": 0,
-                "validation_run_id": None,
-                "deployment_id": None,
-                "error": {
-                    "code": "PHASE_NOT_BUILDABLE",
-                    "message": "already built",
-                    "stage": "BUILDING",
-                },
-                "paused": False,
-            }
-        )
-        monkeypatch.setattr(
-            "app.services.pipeline_service.build_pipeline_graph",
-            lambda _ctx: mock_graph,
-        )
+        state = _happy_final_state()
+        state["error"] = {
+            "code": "PHASE_NOT_BUILDABLE",
+            "message": "already built",
+            "stage": "BUILDING",
+        }
+        _patch_graph(monkeypatch, state)
         voyage = _mock_voyage()
         with pytest.raises(PipelineError) as exc:
             await service.start(voyage, USER_ID, "task")
@@ -433,6 +451,7 @@ class TestPipelineStateShape:
             "deploy_tier": "preview",
             "max_parallel_shipwrights": 1,
             "task": "t",
+            "start_monotonic": time.monotonic(),
             "plan_id": None,
             "poneglyph_count": 0,
             "health_check_count": 0,
@@ -443,6 +462,3 @@ class TestPipelineStateShape:
             "paused": False,
         }
         assert state["voyage_id"] == VOYAGE_ID
-
-
-_ = Any  # silence unused import warning for typing helper

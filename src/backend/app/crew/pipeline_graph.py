@@ -68,7 +68,6 @@ from app.services.pipeline_guards import (
 )
 from app.services.shipwright_service import (
     PHASE_STATUS_BUILT,
-    ShipwrightError,
     ShipwrightService,
 )
 
@@ -91,6 +90,7 @@ class PipelineState(TypedDict):
     deploy_tier: Literal["preview"]
     max_parallel_shipwrights: int
     task: str
+    start_monotonic: float
 
     plan_id: uuid.UUID | None
     poneglyph_count: int
@@ -180,9 +180,7 @@ def _write_vivre_card(
 
 async def _load_voyage(session: AsyncSession, voyage_id: uuid.UUID) -> Voyage:
     result = await session.execute(select(Voyage).where(Voyage.id == voyage_id))
-    voyage = result.scalar_one()
-    await session.refresh(voyage)
-    return voyage
+    return result.scalar_one()
 
 
 async def _load_plan(session: AsyncSession, voyage_id: uuid.UUID) -> VoyagePlan | None:
@@ -499,12 +497,12 @@ def _make_building_node(ctx: PipelineContext) -> StageFn:
 
         start = time.monotonic()
         for layer in layers:
-            pending: list[int] = []
-            for n in layer:
-                current_voyage = await _load_voyage(ctx.session, voyage_id)
-                phase_status_val = current_voyage.phase_status.get(str(n))
-                if phase_status_val != PHASE_STATUS_BUILT:
-                    pending.append(n)
+            # Fetch phase_status once per layer — Shipwright builds within the
+            # layer run under the same voyage row, and we want the pre-layer
+            # snapshot to decide what to schedule.
+            current_voyage = await _load_voyage(ctx.session, voyage_id)
+            phase_status_map = dict(current_voyage.phase_status or {})
+            pending = [n for n in layer if phase_status_map.get(str(n)) != PHASE_STATUS_BUILT]
             if not pending:
                 continue
             tasks = [
@@ -517,10 +515,12 @@ def _make_building_node(ctx: PipelineContext) -> StageFn:
             ]
             try:
                 await asyncio.gather(*tasks)
-            except (ShipwrightError, Exception) as exc:  # noqa: BLE001
+            except Exception as exc:
                 for t in tasks:
                     if not t.done():
                         t.cancel()
+                # Drain cancelled tasks so we don't leak pending coroutines.
+                await asyncio.gather(*tasks, return_exceptions=True)
                 code = getattr(exc, "code", exc.__class__.__name__)
                 message = getattr(exc, "message", str(exc))
                 return {
@@ -570,6 +570,10 @@ def _make_reviewing_node(ctx: PipelineContext) -> StageFn:
             await doctor.validate_code(voyage, state["user_id"], shipwright_files)
             latest = await _load_latest_validation(session, voyage_id)
             if latest is None or latest.status != "passed":
+                # Raise PipelineError here (not DoctorError) because validate_code
+                # persists a ValidationRun even on failure, so the failure mode is
+                # a pipeline-level outcome rather than a Doctor-service exception.
+                # _run_stage_with_guard treats this uniformly via error_types.
                 raise PipelineError(
                     "VALIDATION_FAILED", "Validation did not pass — see ValidationRun"
                 )
@@ -621,13 +625,19 @@ def _make_finalize_node(ctx: PipelineContext) -> StageFn:
             if dep is not None:
                 deployment_url = dep.url
 
+        start = state.get("start_monotonic", time.monotonic())
+        duration = max(0.0, time.monotonic() - start)
+
         await _publish(
             ctx.mushi,
             voyage_id,
             PipelineCompletedEvent(
                 voyage_id=voyage_id,
                 source_role=CrewRole.CAPTAIN,
-                payload={"deployment_url": deployment_url},
+                payload={
+                    "duration_seconds": duration,
+                    "deployment_url": deployment_url,
+                },
             ),
         )
         return {}
@@ -680,6 +690,8 @@ def _route_after_stage(state: PipelineState, next_stage: str) -> str:
 
 
 def build_pipeline_graph(ctx: PipelineContext) -> CompiledStateGraph:  # type: ignore[type-arg]
+    # LangGraph's `StateGraph(PipelineState)` doesn't propagate the state type
+    # through add_node's Protocol shape, so each add_node call needs an ignore.
     graph = StateGraph(PipelineState)
 
     graph.add_node("planning", _make_planning_node(ctx))  # type: ignore[arg-type]
