@@ -1,6 +1,14 @@
 # GrandLine — Architectural Decisions
 
-**Last updated**: 2026-04-14
+**Last updated**: 2026-04-23
+
+---
+
+## Decision: Master pipeline graph invokes services directly; parallel Shipwright via topological layers + semaphore; pause/resume via DB status
+**Date**: 2026-04-23
+**What was decided**: Added `app/crew/pipeline_graph.py` (master graph composing Captain → Navigator → Doctor(tests) → Shipwrights → Doctor(validate) → Helmsman) and `app/services/pipeline_service.py` (thin orchestrator: `start`, `pause`, `cancel`, `get_status`). Graph nodes instantiate crew services directly (`CaptainService`, `NavigatorService`, `DoctorService`, `ShipwrightService`, `HelmsmanService`) — they do not invoke each crew's compiled sub-graph. Parallel building uses `topological_layers()` to group phases by dependency layer, then runs each layer's phases concurrently under an `asyncio.Semaphore(max_parallel_shipwrights)`. Pause/resume is implemented via `voyage.status == PAUSED` in the DB, checked between every stage — **not** via LangGraph checkpointers. Resume is "skip-already-satisfied-stages aggressive": each node calls the next guard, and if it passes, the stage's output already exists → skip the LLM call. Five pipeline-level events added (`pipeline_started`, `pipeline_stage_entered`, `pipeline_stage_completed`, `pipeline_completed`, `pipeline_failed`); SSE streams tap the existing `DenDenMushi` bus — no new SSE endpoint. The pipeline owns the terminal `voyage.status` transitions (`COMPLETED` in `finalize_node`, `FAILED` in `fail_end`); crew services retain their transient writes (`BUILDING`, `DEPLOYING`, etc.) but the pipeline does not re-orchestrate them.
+**Why**: Direct service invocation keeps the graph thin and composable — wrapping each service in a sub-graph would double the node count, obscure the end-to-end flow, and require synchronizing two state models. Topological layers + semaphore is the simplest correct scheduling: respects dependencies, bounds concurrency, and fails fast on any phase's failure. DB-backed pause/resume leverages the existing voyage status field and avoids pulling in `langgraph.checkpoint` (extra dependency, redis/postgres checkpoint storage, state serialization headaches). Skip-already-satisfied turns the guard module (Phase 15.2) into a cheap resume engine — no need for a separate "what's done?" query pathway. Tapping `DenDenMushi` for SSE reuses the stream-key convention already shipped in Phases 10–14.
+**Don't suggest**: LangGraph checkpointers for pause state, sub-graphs per crew (e.g. calling `captain_graph.ainvoke` from a planning node), per-stage `asyncio.gather` without a semaphore (would fan out unbounded), adding a separate "pipeline event stream" distinct from the voyage stream, moving terminal status writes into crew services, making the pipeline aware of `phase_status` transitions at the service level (Shipwright owns those).
 
 ---
 

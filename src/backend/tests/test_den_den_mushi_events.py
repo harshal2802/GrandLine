@@ -14,6 +14,11 @@ from app.den_den_mushi.events import (
     DenDenMushiEvent,
     DeploymentCompletedEvent,
     HealthCheckWrittenEvent,
+    PipelineCompletedEvent,
+    PipelineFailedEvent,
+    PipelineStageCompletedEvent,
+    PipelineStageEnteredEvent,
+    PipelineStartedEvent,
     PoneglyphDraftedEvent,
     ProviderSwitchedEvent,
     ValidationPassedEvent,
@@ -125,6 +130,50 @@ class TestConcreteEventTypes:
         )
         assert event.event_type == "provider_switched"
 
+    def test_pipeline_started(self) -> None:
+        event = PipelineStartedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={
+                "task": "Build login",
+                "deploy_tier": "preview",
+                "max_parallel_shipwrights": 2,
+            },
+        )
+        assert event.event_type == "pipeline_started"
+
+    def test_pipeline_stage_entered(self) -> None:
+        event = PipelineStageEnteredEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={"stage": "PLANNING", "voyage_status": "PLANNING"},
+        )
+        assert event.event_type == "pipeline_stage_entered"
+
+    def test_pipeline_stage_completed(self) -> None:
+        event = PipelineStageCompletedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={"stage": "PLANNING", "duration_seconds": 1.23, "skipped": False},
+        )
+        assert event.event_type == "pipeline_stage_completed"
+
+    def test_pipeline_completed(self) -> None:
+        event = PipelineCompletedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={"duration_seconds": 42.0, "deployment_url": "https://preview.x"},
+        )
+        assert event.event_type == "pipeline_completed"
+
+    def test_pipeline_failed(self) -> None:
+        event = PipelineFailedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={"stage": "BUILDING", "code": "PHASE_NOT_BUILDABLE", "message": "x"},
+        )
+        assert event.event_type == "pipeline_failed"
+
 
 class TestParseEvent:
     def test_parse_voyage_plan_created(self) -> None:
@@ -146,6 +195,11 @@ class TestParseEvent:
             ("validation_passed", ValidationPassedEvent),
             ("deployment_completed", DeploymentCompletedEvent),
             ("provider_switched", ProviderSwitchedEvent),
+            ("pipeline_started", PipelineStartedEvent),
+            ("pipeline_stage_entered", PipelineStageEnteredEvent),
+            ("pipeline_stage_completed", PipelineStageCompletedEvent),
+            ("pipeline_completed", PipelineCompletedEvent),
+            ("pipeline_failed", PipelineFailedEvent),
         ]
         for event_type, expected_class in types_and_classes:
             data = {

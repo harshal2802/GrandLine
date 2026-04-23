@@ -68,6 +68,26 @@ class CheckpointCreatedEvent(DenDenMushiEvent):
     event_type: Literal["checkpoint_created"] = "checkpoint_created"
 
 
+class PipelineStartedEvent(DenDenMushiEvent):
+    event_type: Literal["pipeline_started"] = "pipeline_started"
+
+
+class PipelineStageEnteredEvent(DenDenMushiEvent):
+    event_type: Literal["pipeline_stage_entered"] = "pipeline_stage_entered"
+
+
+class PipelineStageCompletedEvent(DenDenMushiEvent):
+    event_type: Literal["pipeline_stage_completed"] = "pipeline_stage_completed"
+
+
+class PipelineCompletedEvent(DenDenMushiEvent):
+    event_type: Literal["pipeline_completed"] = "pipeline_completed"
+
+
+class PipelineFailedEvent(DenDenMushiEvent):
+    event_type: Literal["pipeline_failed"] = "pipeline_failed"
+
+
 AnyEvent = Annotated[
     VoyagePlanCreatedEvent
     | PoneglyphDraftedEvent
@@ -80,7 +100,12 @@ AnyEvent = Annotated[
     | DeploymentCompletedEvent
     | DeploymentFailedEvent
     | ProviderSwitchedEvent
-    | CheckpointCreatedEvent,
+    | CheckpointCreatedEvent
+    | PipelineStartedEvent
+    | PipelineStageEnteredEvent
+    | PipelineStageCompletedEvent
+    | PipelineCompletedEvent
+    | PipelineFailedEvent,
     Field(discriminator="event_type"),
 ]
 
