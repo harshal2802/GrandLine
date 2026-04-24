@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.voyage import Voyage
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
+from app.services.pipeline_service import PipelineService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -138,3 +139,27 @@ async def get_dial_router(
         yield router
     finally:
         await router.close()
+
+
+def get_pipeline_service(
+    dial_router: DialSystemRouter = Depends(get_dial_router),
+    mushi: DenDenMushi = Depends(get_den_den_mushi),
+    session: AsyncSession = Depends(get_db),
+    execution_service: ExecutionService = Depends(get_execution_service),
+    git_service: GitService = Depends(get_git_service),
+    deployment_backend: DeploymentBackend = Depends(get_deployment_backend),
+) -> PipelineService:
+    return PipelineService(
+        session=session,
+        mushi=mushi,
+        dial_router=dial_router,
+        execution_service=execution_service,
+        git_service=git_service,
+        deployment_backend=deployment_backend,
+    )
+
+
+async def get_pipeline_service_reader(
+    session: AsyncSession = Depends(get_db),
+) -> PipelineService:
+    return PipelineService.reader(session)

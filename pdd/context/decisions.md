@@ -1,6 +1,14 @@
 # GrandLine — Architectural Decisions
 
-**Last updated**: 2026-04-23
+**Last updated**: 2026-04-24
+
+---
+
+## Decision: Pipeline REST + SSE API on top of PipelineService; background tasks in `app.state.pipeline_tasks`; SSE via ephemeral consumer groups
+**Date**: 2026-04-24
+**What was decided**: Added `app/api/v1/pipeline.py` with five endpoints: `POST /voyages/{id}/start` (202 Accepted, spawns `asyncio.create_task(service.start(...))` registered in `app.state.pipeline_tasks: dict[uuid.UUID, asyncio.Task]` and cleaned up via `task.add_done_callback`), `POST /pause` / `POST /cancel` (200, idempotent on terminal status; `/cancel` also cancels the in-flight task), `GET /status` (uses `PipelineService.reader(session)` — no dial router / execution backend constructed), and `GET /stream` (SSE, `text/event-stream`, one fresh ephemeral consumer group per connection named `sse-<uuid>`, replay-from-start at `id="0"`, ~1s block timeout with `request.is_disconnected()` check each loop, terminates on voyage terminal status or client disconnect, destroys the group in the `finally` block). Running-pipeline idempotency on `POST /start` is 409 `PIPELINE_ALREADY_RUNNING`; COMPLETED voyage also 409. `StartVoyageRequest` has `task: str (10–5000 chars)`, `deploy_tier: Literal["preview"]`, `max_parallel_shipwrights: int | None (ge=1 le=10)`. Shutdown in `app/main.py` lifespan cancels in-flight tasks and awaits up to 5s. No `last-event-id` / SSE resume in v1.
+**Why**: Making `POST /start` 202 + background task keeps the HTTP layer responsive — the graph run takes minutes, not milliseconds, and clients observe it via SSE. The registry is process-local and single-worker by design; a multi-worker deployment would need to move it to Redis, but v1 runs single-worker and the simplicity is worth more than the horizontal-scale story. Ephemeral per-connection consumer groups sidestep cross-client ack coordination: each SSE consumer gets its own replay and the group dies with the connection (clean finally cleanup). Terminating on DB voyage status — rather than a dedicated "stream-end" event — means the SSE endpoint doesn't need to know about every terminal event type; any final state flip closes the stream. Running-pipeline 409 forces callers to explicitly cancel + restart rather than silently stomping on an in-flight run. The 5s shutdown window gives spawning `PipelineFailedEvent` one chance to reach Redis before the loop tears down.
+**Don't suggest**: Persisting `pipeline_tasks` to Redis for multi-worker (out of scope for v1), named SSE events (`event: pipeline_stage_entered\ndata: ...`) — the envelope already carries `event_type` inline, adding a dedicated "pipeline finished" event to terminate SSE (DB status flip is sufficient), reusing a named consumer group across SSE connections (ack coordination headache), making `/start` synchronous (blocks connection for minutes), `last-event-id` support (revisit when stream volume > ~100 events per voyage)
 
 ---
 
