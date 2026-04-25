@@ -14,14 +14,13 @@ test order does not matter and no data is leaked into the shared dev DB.
 
 from __future__ import annotations
 
-import socket
 import uuid
 from collections.abc import AsyncIterator
 
 import pytest
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -40,6 +39,7 @@ from tests.integration.stubs import StubExecutionBackend
 # `postgresql+psycopg://` scheme transparently supports async via
 # `create_async_engine` (psycopg's async API), so no extra dependency.
 _INTEGRATION_DB_URL = "postgresql+psycopg://grandline:grandline@localhost:5432/grandline"
+_SYNC_DB_URL = "postgresql+psycopg://grandline:grandline@localhost:5432/grandline"
 _REDIS_URL = "redis://localhost:6379/1"
 
 _TRUNCATE_SQL = text(
@@ -50,10 +50,19 @@ _TRUNCATE_SQL = text(
 
 
 def _postgres_reachable() -> bool:
+    """Verify that we can actually connect to the integration DB.
+
+    A bare port check passes whenever something is listening on 5432, even
+    if the `grandline` database doesn't exist (e.g. shared-runner CI). We
+    try a real connection so the fixture can `pytest.skip` cleanly.
+    """
     try:
-        with socket.create_connection(("localhost", 5432), timeout=0.5):
-            return True
-    except OSError:
+        engine = create_engine(_SYNC_DB_URL, connect_args={"connect_timeout": 1})
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        engine.dispose()
+        return True
+    except Exception:
         return False
 
 
