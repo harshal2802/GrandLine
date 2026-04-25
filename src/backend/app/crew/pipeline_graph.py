@@ -724,15 +724,15 @@ def build_pipeline_graph(ctx: PipelineContext) -> CompiledStateGraph:  # type: i
     # through add_node's Protocol shape, so each add_node call needs an ignore.
     graph = StateGraph(PipelineState)
 
-    graph.add_node("planning", _make_planning_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("pdd", _make_pdd_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("tdd", _make_tdd_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("building", _make_building_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("reviewing", _make_reviewing_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("deploying", _make_deploying_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("finalize", _make_finalize_node(ctx))  # type: ignore[call-overload]
-    graph.add_node("fail_end", _make_fail_end(ctx))  # type: ignore[call-overload]
-    graph.add_node("pause_end", _make_pause_end(ctx))  # type: ignore[call-overload]
+    graph.add_node("planning", _make_planning_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("pdd", _make_pdd_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("tdd", _make_tdd_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("building", _make_building_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("reviewing", _make_reviewing_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("deploying", _make_deploying_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("finalize", _make_finalize_node(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("fail_end", _make_fail_end(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
+    graph.add_node("pause_end", _make_pause_end(ctx))  # type: ignore[arg-type, call-overload, unused-ignore]
 
     graph.set_entry_point("planning")
 
