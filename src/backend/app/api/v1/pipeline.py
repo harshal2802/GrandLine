@@ -220,8 +220,11 @@ async def stream_events(
                     yield f"data: {envelope.model_dump_json()}\n\n".encode()
                     await mushi.ack(stream, group, msg_id)
 
-                # Re-fetch voyage status; close on terminal.
-                refreshed = await session.get(Voyage, voyage.id)
+                # Re-fetch voyage status; close on terminal. `populate_existing`
+                # bypasses the identity map so writes committed by the
+                # background pipeline task are visible (without it,
+                # get_authorized_voyage's cached instance shadows updates).
+                refreshed = await session.get(Voyage, voyage.id, populate_existing=True)
                 if refreshed is not None and refreshed.status in _TERMINAL_STATUSES:
                     break
         finally:
