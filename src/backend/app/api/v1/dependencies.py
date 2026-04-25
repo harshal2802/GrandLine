@@ -149,6 +149,10 @@ def get_pipeline_service(
     git_service: GitService = Depends(get_git_service),
     deployment_backend: DeploymentBackend = Depends(get_deployment_backend),
 ) -> PipelineService:
+    # Import locally to avoid a circular import at module load time
+    # (app.models pulls in models that may transitively import this module).
+    from app.models import async_session
+
     return PipelineService(
         session=session,
         mushi=mushi,
@@ -156,6 +160,7 @@ def get_pipeline_service(
         execution_service=execution_service,
         git_service=git_service,
         deployment_backend=deployment_backend,
+        session_factory=async_session,
     )
 
 

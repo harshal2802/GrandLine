@@ -13,8 +13,11 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import ARRAY, String, cast, delete, func, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstanceState
+from sqlalchemy.orm import attributes as sa_attrs
 
 from app.crew.shipwright_graph import build_shipwright_graph
 from app.den_den_mushi.constants import stream_key
@@ -111,7 +114,7 @@ class ShipwrightService:
                 ),
             )
 
-        self._set_phase_status(voyage, phase_key, PHASE_STATUS_BUILDING)
+        await self._set_phase_status(voyage, phase_key, PHASE_STATUS_BUILDING)
         await self._session.flush()
 
         state: dict[str, Any] = {
@@ -164,8 +167,11 @@ class ShipwrightService:
 
                 state["last_test_output"] = state.get("stdout", "")
         except Exception:
-            self._set_phase_status(voyage, phase_key, PHASE_STATUS_FAILED)
-            await self._session.flush()
+            await self._set_phase_status(voyage, phase_key, PHASE_STATUS_FAILED)
+            # Commit (not just flush) so the FAILED state survives even when
+            # the caller's `async with session_factory()` rolls back on the
+            # exception we're about to re-raise (issue #39).
+            await self._session.commit()
             raise
 
         passed = state.get("exit_code") == 0
@@ -229,7 +235,7 @@ class ShipwrightService:
         )
         self._session.add(card)
 
-        self._set_phase_status(
+        await self._set_phase_status(
             voyage, phase_key, PHASE_STATUS_BUILT if passed else PHASE_STATUS_FAILED
         )
         await self._session.commit()
@@ -263,11 +269,48 @@ class ShipwrightService:
             summary=truncated[-500:],
         )
 
-    def _set_phase_status(self, voyage: Voyage, phase_key: str, status: str) -> None:
-        """Assign a fresh dict so SQLAlchemy sees the JSONB column as dirty."""
+    async def _set_phase_status(self, voyage: Voyage, phase_key: str, status: str) -> None:
+        """Atomically merge `phase_status[phase_key] = status` (issue #39).
+
+        A naive `voyage.phase_status = {**voyage.phase_status, key: status}`
+        races when multiple Shipwright sessions update the same voyage row
+        in parallel — each session re-writes the whole dict, so the last
+        commit clobbers earlier keys. `jsonb_set(...)` is a single-statement
+        atomic merge: Postgres acquires a row lock, reads the latest
+        committed JSONB, and applies the merge on top.
+
+        Autoflush has to be suppressed for the merge: ORM-tracked dirty
+        state on `voyage.phase_status` would otherwise issue a competing
+        UPDATE using the local dict, defeating the atomic merge. After the
+        SQL runs, `set_committed_value` updates the in-memory copy without
+        re-flagging it as dirty.
+        """
         new_status = dict(voyage.phase_status or {})
         new_status[phase_key] = status
-        voyage.phase_status = new_status
+
+        with self._session.no_autoflush:
+            await self._session.execute(
+                update(Voyage)
+                .where(Voyage.id == voyage.id)
+                .values(
+                    phase_status=func.jsonb_set(
+                        Voyage.phase_status,
+                        cast([phase_key], ARRAY(String)),
+                        func.to_jsonb(status),
+                    )
+                )
+            )
+        # Update the in-memory voyage.phase_status. For real ORM instances
+        # use `set_committed_value` so SQLAlchemy doesn't mark the column
+        # dirty — otherwise the next flush would issue a competing UPDATE
+        # that clobbers concurrent merges. Mocked voyages (unit tests) do
+        # not have an InstanceState, so fall back to plain assignment.
+        if isinstance(sa_inspect(voyage, raiseerr=False), InstanceState):
+            sa_attrs.set_committed_value(  # type: ignore[no-untyped-call]
+                voyage, "phase_status", new_status
+            )
+        else:
+            voyage.phase_status = new_status
 
     async def _checkpoint_iteration(
         self,
