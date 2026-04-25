@@ -29,7 +29,7 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.den_den_mushi.constants import stream_key
 from app.den_den_mushi.events import (
@@ -110,6 +110,12 @@ class PipelineContext:
     Built by `PipelineService.start(...)` and closed over by every stage node.
     Keeping this as a dataclass (rather than the PipelineService itself) keeps
     the graph testable with mocked collaborators.
+
+    `session_factory` is used by `_build_one_phase` to open a per-phase
+    `AsyncSession` so parallel Shipwright phases don't share a psycopg
+    connection (issue #39). When `None`, the building node falls back to
+    the shared `session` — fine for unit tests with mocked sessions, but
+    `PipelineService` must always provide a real factory in production.
     """
 
     session: AsyncSession
@@ -118,6 +124,7 @@ class PipelineContext:
     execution_service: ExecutionService
     git_service: GitService | None
     deployment_backend: DeploymentBackend
+    session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def topological_layers(phases: list[dict[str, Any]]) -> list[list[int]]:
@@ -179,7 +186,13 @@ def _write_vivre_card(
 
 
 async def _load_voyage(session: AsyncSession, voyage_id: uuid.UUID) -> Voyage:
-    result = await session.execute(select(Voyage).where(Voyage.id == voyage_id))
+    # `populate_existing=True` bypasses the identity map. Stage nodes call
+    # this to observe status / phase_status changes committed by other
+    # sessions (issue #39: per-phase Shipwright sessions, the API layer's
+    # PAUSED flip, etc.). Without it, the cached instance shadows updates.
+    result = await session.execute(
+        select(Voyage).where(Voyage.id == voyage_id).execution_options(populate_existing=True)
+    )
     return result.scalar_one()
 
 
@@ -431,13 +444,30 @@ async def _build_one_phase(
     semaphore: asyncio.Semaphore,
 ) -> None:
     async with semaphore:
-        voyage = await _load_voyage(ctx.session, state["voyage_id"])
-        shipwright = ShipwrightService(
-            ctx.dial_router, ctx.mushi, ctx.session, ctx.execution_service, ctx.git_service
-        )
-        await shipwright.build_code(
-            voyage, phase_number, poneglyph, health_checks, state["user_id"]
-        )
+        # Issue #39: parallel phases must not share a psycopg connection.
+        # In production, ctx.session_factory is always set; fall back to the
+        # shared session only for unit tests with mocked sessions.
+        if ctx.session_factory is not None:
+            async with ctx.session_factory() as phase_session:
+                voyage = await _load_voyage(phase_session, state["voyage_id"])
+                shipwright = ShipwrightService(
+                    ctx.dial_router,
+                    ctx.mushi,
+                    phase_session,
+                    ctx.execution_service,
+                    ctx.git_service,
+                )
+                await shipwright.build_code(
+                    voyage, phase_number, poneglyph, health_checks, state["user_id"]
+                )
+        else:
+            voyage = await _load_voyage(ctx.session, state["voyage_id"])
+            shipwright = ShipwrightService(
+                ctx.dial_router, ctx.mushi, ctx.session, ctx.execution_service, ctx.git_service
+            )
+            await shipwright.build_code(
+                voyage, phase_number, poneglyph, health_checks, state["user_id"]
+            )
 
 
 def _make_building_node(ctx: PipelineContext) -> StageFn:
@@ -694,15 +724,15 @@ def build_pipeline_graph(ctx: PipelineContext) -> CompiledStateGraph:  # type: i
     # through add_node's Protocol shape, so each add_node call needs an ignore.
     graph = StateGraph(PipelineState)
 
-    graph.add_node("planning", _make_planning_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("pdd", _make_pdd_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("tdd", _make_tdd_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("building", _make_building_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("reviewing", _make_reviewing_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("deploying", _make_deploying_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("finalize", _make_finalize_node(ctx))  # type: ignore[arg-type]
-    graph.add_node("fail_end", _make_fail_end(ctx))  # type: ignore[arg-type]
-    graph.add_node("pause_end", _make_pause_end(ctx))  # type: ignore[arg-type]
+    graph.add_node("planning", _make_planning_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("pdd", _make_pdd_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("tdd", _make_tdd_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("building", _make_building_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("reviewing", _make_reviewing_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("deploying", _make_deploying_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("finalize", _make_finalize_node(ctx))  # type: ignore[call-overload]
+    graph.add_node("fail_end", _make_fail_end(ctx))  # type: ignore[call-overload]
+    graph.add_node("pause_end", _make_pause_end(ctx))  # type: ignore[call-overload]
 
     graph.set_entry_point("planning")
 

@@ -16,6 +16,16 @@ COMPOSE ?= $(shell \
 	elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then echo "podman compose"; \
 	else echo "docker compose"; fi) -f $(COMPOSE_FILE)
 
+# DOCKER_HOST resolution: aiodocker (used by GVisorContainerBackend in
+# app.main:lifespan) needs DOCKER_HOST set when there is no /var/run/docker.sock.
+# Resolves to the Podman machine socket if Podman is running. Recipes that
+# spawn the backend should `eval $(DOCKER_HOST_EXPORT)` first.
+DOCKER_HOST_EXPORT = \
+	if [ -z "$$DOCKER_HOST" ]; then \
+		PODMAN_SOCK=$$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null); \
+		if [ -n "$$PODMAN_SOCK" ]; then export DOCKER_HOST="unix://$$PODMAN_SOCK"; fi; \
+	fi
+
 # ── Help ──────────────────────────────────────────────────────────────────────
 .PHONY: help
 help: ## Show this help
@@ -89,7 +99,8 @@ migrate-status: ## Show current alembic revision
 
 # ── Backend (local dev, against containerized db+redis) ──────────────────────
 .PHONY: api-dev
-api-dev: ## Run FastAPI locally with uvicorn --reload
+api-dev: ## Run FastAPI locally with uvicorn --reload (requires `make up`)
+	@$(DOCKER_HOST_EXPORT); \
 	cd $(BACKEND) && source venv/bin/activate && \
 		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
 		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
@@ -135,9 +146,8 @@ setup: venv up migrate ## One-shot: venv + infra + migrations
 
 .PHONY: api-mocked
 api-mocked: ## Run FastAPI with PipelineService.start mocked (for smoke test)
-	@PODMAN_SOCK=$$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null || true); \
+	@$(DOCKER_HOST_EXPORT); \
 	cd $(BACKEND) && source venv/bin/activate && \
-		DOCKER_HOST=unix://$$PODMAN_SOCK \
 		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
 		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
 		PYTHONPATH=. python3 -m scripts.dev_api_mocked

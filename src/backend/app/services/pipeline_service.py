@@ -17,7 +17,7 @@ import uuid
 from typing import Any, Literal
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.crew.pipeline_graph import (
     PipelineContext,
@@ -68,6 +68,7 @@ class PipelineService:
         execution_service: ExecutionService,
         git_service: GitService | None,
         deployment_backend: DeploymentBackend,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._session = session
         self._mushi = mushi
@@ -75,6 +76,7 @@ class PipelineService:
         self._execution = execution_service
         self._git = git_service
         self._backend = deployment_backend
+        self._session_factory = session_factory
 
     @classmethod
     def reader(cls, session: AsyncSession) -> PipelineService:
@@ -85,6 +87,7 @@ class PipelineService:
         inst._execution = None  # type: ignore[assignment]
         inst._git = None
         inst._backend = None  # type: ignore[assignment]
+        inst._session_factory = None
         return inst
 
     async def start(
@@ -131,6 +134,7 @@ class PipelineService:
             execution_service=self._execution,
             git_service=self._git,
             deployment_backend=self._backend,
+            session_factory=self._session_factory,
         )
         graph = build_pipeline_graph(ctx)
 
