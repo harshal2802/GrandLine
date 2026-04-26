@@ -50,6 +50,8 @@ router = APIRouter(prefix="/voyages/{voyage_id}", tags=["pipeline"])
 
 _PIPELINE_ERROR_STATUS: dict[str, int] = {
     "VOYAGE_NOT_PLANNABLE": status.HTTP_409_CONFLICT,
+    "VOYAGE_NOT_RESUMABLE": status.HTTP_409_CONFLICT,
+    "VOYAGE_PAUSED_USE_RESUME": status.HTTP_409_CONFLICT,
     "PIPELINE_ALREADY_RUNNING": status.HTTP_409_CONFLICT,
     "INVALID_CONCURRENCY": status.HTTP_400_BAD_REQUEST,
 }
@@ -79,38 +81,21 @@ def _already_running(request: Request, voyage_id: uuid.UUID) -> bool:
     return existing is not None and not existing.done()
 
 
-@router.post(
-    "/start",
-    response_model=StartVoyageResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def start_voyage(
-    voyage_id: uuid.UUID,
-    body: StartVoyageRequest,
+def _spawn_pipeline_task(
     request: Request,
-    user: User = Depends(get_current_user),
-    voyage: Voyage = Depends(get_authorized_voyage),
-    pipeline_service: PipelineService = Depends(get_pipeline_service),
+    voyage: Voyage,
+    user: User,
+    body: StartVoyageRequest,
+    pipeline_service: PipelineService,
 ) -> StartVoyageResponse:
+    """Register a background pipeline task in `app.state.pipeline_tasks`.
+
+    Mirrors the lifecycle used by `/start` and `/resume`: create_task,
+    register in the per-voyage registry, attach a done_callback that pops
+    the entry on completion (success, failure, or cancellation).
+    """
     registry: dict[uuid.UUID, asyncio.Task[None]] = request.app.state.pipeline_tasks
-
-    if _already_running(request, voyage_id):
-        raise _pipeline_http_exception(
-            PipelineError(
-                "PIPELINE_ALREADY_RUNNING",
-                f"Pipeline for voyage {voyage_id} is already running",
-            )
-        )
-
-    # Additional 409 guard: completed voyages cannot be re-run. Re-run workflow
-    # is cancel + restart — out of scope for v1.
-    if voyage.status == VoyageStatus.COMPLETED.value:
-        raise _pipeline_http_exception(
-            PipelineError(
-                "VOYAGE_NOT_PLANNABLE",
-                f"Voyage status is {voyage.status}; cannot re-run a completed voyage",
-            )
-        )
+    voyage_id = voyage.id
 
     task = asyncio.create_task(
         pipeline_service.start(
@@ -129,6 +114,101 @@ async def start_voyage(
     task.add_done_callback(_cleanup)
 
     return StartVoyageResponse(voyage_id=voyage_id, status=voyage.status)
+
+
+@router.post(
+    "/start",
+    response_model=StartVoyageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_voyage(
+    voyage_id: uuid.UUID,
+    body: StartVoyageRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    pipeline_service: PipelineService = Depends(get_pipeline_service),
+) -> StartVoyageResponse:
+    if _already_running(request, voyage_id):
+        raise _pipeline_http_exception(
+            PipelineError(
+                "PIPELINE_ALREADY_RUNNING",
+                f"Pipeline for voyage {voyage_id} is already running",
+            )
+        )
+
+    # Additional 409 guard: completed voyages cannot be re-run. Re-run workflow
+    # is cancel + restart — out of scope for v1.
+    if voyage.status == VoyageStatus.COMPLETED.value:
+        raise _pipeline_http_exception(
+            PipelineError(
+                "VOYAGE_NOT_PLANNABLE",
+                f"Voyage status is {voyage.status}; cannot re-run a completed voyage",
+            )
+        )
+
+    # PAUSED voyages must use POST /resume — /start is "begin a fresh run"
+    # and would otherwise silently no-op on the graph's per-stage PAUSED check.
+    if voyage.status == VoyageStatus.PAUSED.value:
+        raise _pipeline_http_exception(
+            PipelineError(
+                "VOYAGE_PAUSED_USE_RESUME",
+                f"Voyage is PAUSED; use POST /voyages/{voyage_id}/resume to continue",
+            )
+        )
+
+    return _spawn_pipeline_task(request, voyage, user, body, pipeline_service)
+
+
+@router.post(
+    "/resume",
+    response_model=StartVoyageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resume_voyage(
+    voyage_id: uuid.UUID,
+    body: StartVoyageRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    pipeline_service: PipelineService = Depends(get_pipeline_service),
+) -> StartVoyageResponse:
+    """Resume a PAUSED voyage.
+
+    Flips `voyage.status` from PAUSED (or FAILED) back to CHARTED, then
+    spawns the pipeline graph the same way `/start` does. The graph's
+    skip-already-satisfied logic picks up from the next unsatisfied stage.
+
+    Idempotency table:
+
+    | voyage.status                                           | Behavior          | HTTP |
+    |---------------------------------------------------------|-------------------|------|
+    | PAUSED                                                  | flip -> CHARTED   | 202  |
+    | FAILED                                                  | flip -> CHARTED   | 202  |
+    | CHARTED                                                 | no flip, accept   | 202  |
+    | PLANNING / PDD / TDD / BUILDING / REVIEWING / DEPLOYING | reject            | 409  |
+    | COMPLETED / CANCELLED                                   | reject            | 409  |
+    | (running task already in registry)                      | reject            | 409  |
+
+    The request body is `StartVoyageRequest` (same shape as `/start`). The
+    `task` field is required by validation but is unused on resume because
+    the Captain stage is skip-already-satisfied (the plan already exists).
+    Callers may supply a placeholder string of >= 10 chars.
+    """
+    if _already_running(request, voyage_id):
+        raise _pipeline_http_exception(
+            PipelineError(
+                "PIPELINE_ALREADY_RUNNING",
+                f"Pipeline for voyage {voyage_id} is already running",
+            )
+        )
+
+    try:
+        await pipeline_service.resume(voyage)
+    except PipelineError as exc:
+        raise _pipeline_http_exception(exc) from exc
+
+    return _spawn_pipeline_task(request, voyage, user, body, pipeline_service)
 
 
 @router.post("/pause", status_code=status.HTTP_200_OK)

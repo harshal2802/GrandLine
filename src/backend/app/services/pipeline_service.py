@@ -57,6 +57,8 @@ _MAX_CONCURRENCY_CEIL = 10
 _TERMINAL_STATUSES = frozenset(
     {VoyageStatus.COMPLETED.value, VoyageStatus.FAILED.value, VoyageStatus.CANCELLED.value}
 )
+_RESUMABLE_STATUSES = frozenset({VoyageStatus.PAUSED.value, VoyageStatus.FAILED.value})
+_NON_RESUMABLE_TERMINAL = frozenset({VoyageStatus.COMPLETED.value, VoyageStatus.CANCELLED.value})
 
 
 class PipelineService:
@@ -178,6 +180,36 @@ class PipelineService:
         if voyage.status in _TERMINAL_STATUSES:
             return
         voyage.status = VoyageStatus.PAUSED.value
+        self._session.add(voyage)
+        await self._session.commit()
+
+    async def resume(self, voyage: Voyage) -> None:
+        """Flip a PAUSED or FAILED voyage back to CHARTED.
+
+        - PAUSED / FAILED -> flip to CHARTED, commit.
+        - CHARTED -> no-op (already runnable).
+        - COMPLETED / CANCELLED -> raises VOYAGE_NOT_RESUMABLE.
+        - Any active mid-pipeline status (PLANNING, PDD, TDD, BUILDING,
+          REVIEWING, DEPLOYING) -> raises VOYAGE_NOT_RESUMABLE.
+
+        After this returns, the caller spawns the pipeline graph; the graph's
+        skip-already-satisfied logic picks up from the next unsatisfied stage.
+        """
+        if voyage.status == VoyageStatus.CHARTED.value:
+            return
+        if voyage.status in _NON_RESUMABLE_TERMINAL:
+            raise PipelineError(
+                "VOYAGE_NOT_RESUMABLE",
+                f"Voyage status is {voyage.status}; cannot resume a "
+                f"{voyage.status.lower()} voyage",
+            )
+        if voyage.status not in _RESUMABLE_STATUSES:
+            raise PipelineError(
+                "VOYAGE_NOT_RESUMABLE",
+                f"Voyage status is {voyage.status}; cancel and restart, "
+                f"or wait for the current run to reach a resumable state",
+            )
+        voyage.status = VoyageStatus.CHARTED.value
         self._session.add(voyage)
         await self._session.commit()
 

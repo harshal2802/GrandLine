@@ -790,15 +790,13 @@ class TestResumeSkipsAlreadySatisfied:
         stub_deployment_backend: InProcessDeploymentBackend,
     ) -> None:
         user = await _seed_user(db_session)
-        # NOTE: the prompt asks for `status=PAUSED` here, but the pipeline graph
-        # short-circuits to `pause_end` on the very first stage if the voyage
-        # is loaded as PAUSED — the API caller is implicitly expected to flip
-        # the status back to CHARTED before invoking resume. We seed CHARTED
-        # so the resume-skip-already-satisfied path is exercised; the PAUSED
-        # short-circuit behaviour is a separate finding documented in the
-        # Phase 15.5 report.
+        # Issue #40 fix: seed PAUSED, then call PipelineService.resume() to
+        # flip back to CHARTED before invoking PipelineService.start(). The
+        # graph's per-stage `if status == PAUSED` short-circuit is the reason
+        # the API exposes an explicit `POST /resume` endpoint — the caller
+        # must flip status before spawning the graph.
         voyage = await _seed_voyage(
-            db_session, user, title="resume-paused", status=VoyageStatus.CHARTED
+            db_session, user, title="resume-paused", status=VoyageStatus.PAUSED
         )
         await _seed_dial_config(db_session, voyage)
 
@@ -881,6 +879,13 @@ class TestResumeSkipsAlreadySatisfied:
             stub_execution_service,
             stub_deployment_backend,
         )
+
+        # Resume flips PAUSED -> CHARTED and commits. After this returns,
+        # service.start() proceeds normally; the per-stage PAUSED check no
+        # longer short-circuits the graph.
+        assert voyage.status == VoyageStatus.PAUSED.value
+        await service.resume(voyage)
+        assert voyage.status == VoyageStatus.CHARTED.value
 
         await service.start(voyage, user.id, "resume from paused", "preview")
 
