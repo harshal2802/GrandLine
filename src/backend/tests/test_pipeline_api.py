@@ -82,6 +82,7 @@ def _mock_pipeline_service() -> AsyncMock:
     svc = AsyncMock()
     svc.start = AsyncMock(return_value=None)
     svc.pause = AsyncMock(return_value=None)
+    svc.resume = AsyncMock(return_value=None)
     svc.cancel = AsyncMock(return_value=None)
     svc.get_status = AsyncMock(return_value=_snapshot())
     return svc
@@ -286,6 +287,272 @@ class TestStartVoyage:
 
         result = await start_voyage(VOYAGE_ID, body, request, _mock_user(), _mock_voyage(), svc)
 
+        assert result.accepted is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_returns_409_when_voyage_paused_with_use_resume_code(self) -> None:
+        """`/start` on a PAUSED voyage now returns a deterministic 409
+        with `VOYAGE_PAUSED_USE_RESUME` instead of the previous silent
+        no-op. Callers should hit `POST /resume` instead."""
+        from app.api.v1.pipeline import start_voyage
+
+        svc = _mock_pipeline_service()
+        body = StartVoyageRequest(task="build a todo app with auth")
+        request = _mock_request()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await start_voyage(
+                VOYAGE_ID,
+                body,
+                request,
+                _mock_user(),
+                _mock_voyage(status=VoyageStatus.PAUSED.value),
+                svc,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_PAUSED_USE_RESUME"
+        assert "resume" in exc_info.value.detail["error"]["message"].lower()
+        svc.start.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /resume
+# ---------------------------------------------------------------------------
+
+
+class TestResumeVoyage:
+    @pytest.mark.asyncio
+    async def test_returns_202_and_spawns_task_when_voyage_paused(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(status=VoyageStatus.PAUSED.value)
+
+        async def _resume(v: Any) -> None:
+            v.status = VoyageStatus.CHARTED.value
+
+        svc.resume = AsyncMock(side_effect=_resume)
+        body = StartVoyageRequest(task="resume placeholder task")
+        registry: dict[uuid.UUID, asyncio.Task[None]] = {}
+        request = _mock_request(pipeline_tasks=registry)
+
+        result = await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+
+        assert isinstance(result, StartVoyageResponse)
+        assert result.voyage_id == VOYAGE_ID
+        assert result.accepted is True
+        # Resume flipped the status before the task spawned.
+        assert result.status == VoyageStatus.CHARTED.value
+        svc.resume.assert_awaited_once_with(voyage)
+        # Drain the spawned task so cleanup fires.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert VOYAGE_ID not in registry
+
+    @pytest.mark.asyncio
+    async def test_returns_202_when_voyage_failed(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(status=VoyageStatus.FAILED.value)
+
+        async def _resume(v: Any) -> None:
+            v.status = VoyageStatus.CHARTED.value
+
+        svc.resume = AsyncMock(side_effect=_resume)
+        body = StartVoyageRequest(task="resume after failure")
+        request = _mock_request()
+
+        result = await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+
+        assert result.accepted is True
+        assert result.status == VoyageStatus.CHARTED.value
+        svc.resume.assert_awaited_once_with(voyage)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_returns_202_when_voyage_charted(self) -> None:
+        """CHARTED -> resume is a no-op flip; still spawns the task."""
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(status=VoyageStatus.CHARTED.value)
+        svc.resume = AsyncMock(return_value=None)
+        body = StartVoyageRequest(task="resume already charted")
+        request = _mock_request()
+
+        result = await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+
+        assert result.accepted is True
+        assert result.status == VoyageStatus.CHARTED.value
+        svc.resume.assert_awaited_once_with(voyage)
+        svc.start.assert_called_once()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_returns_409_when_voyage_completed(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        svc.resume = AsyncMock(
+            side_effect=PipelineError(
+                "VOYAGE_NOT_RESUMABLE",
+                "Voyage status is COMPLETED; cannot resume a completed voyage",
+            )
+        )
+        body = StartVoyageRequest(task="resume completed placeholder")
+        request = _mock_request()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await resume_voyage(
+                VOYAGE_ID,
+                body,
+                request,
+                _mock_user(),
+                _mock_voyage(status=VoyageStatus.COMPLETED.value),
+                svc,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_NOT_RESUMABLE"
+        svc.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_409_when_voyage_cancelled(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        svc.resume = AsyncMock(
+            side_effect=PipelineError(
+                "VOYAGE_NOT_RESUMABLE",
+                "Voyage status is CANCELLED; cannot resume a cancelled voyage",
+            )
+        )
+        body = StartVoyageRequest(task="resume cancelled placeholder")
+        request = _mock_request()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await resume_voyage(
+                VOYAGE_ID,
+                body,
+                request,
+                _mock_user(),
+                _mock_voyage(status=VoyageStatus.CANCELLED.value),
+                svc,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_NOT_RESUMABLE"
+        svc.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_409_when_pipeline_already_running(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        running = asyncio.create_task(asyncio.sleep(5))
+        try:
+            registry: dict[uuid.UUID, asyncio.Task[None]] = {VOYAGE_ID: running}
+            request = _mock_request(pipeline_tasks=registry)
+            body = StartVoyageRequest(task="resume running placeholder")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await resume_voyage(
+                    VOYAGE_ID,
+                    body,
+                    request,
+                    _mock_user(),
+                    _mock_voyage(status=VoyageStatus.PAUSED.value),
+                    svc,
+                )
+
+            assert exc_info.value.status_code == 409
+            assert exc_info.value.detail["error"]["code"] == "PIPELINE_ALREADY_RUNNING"
+            svc.resume.assert_not_called()
+            svc.start.assert_not_called()
+        finally:
+            running.cancel()
+            try:
+                await running
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_returns_409_when_voyage_running_planning_stage(self) -> None:
+        """Mid-pipeline status (e.g. PLANNING) is not resumable; the running
+        pipeline owns it. Caller workflow is cancel + restart."""
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        svc.resume = AsyncMock(
+            side_effect=PipelineError(
+                "VOYAGE_NOT_RESUMABLE",
+                "Voyage status is PLANNING; cancel and restart, "
+                "or wait for the current run to reach a resumable state",
+            )
+        )
+        body = StartVoyageRequest(task="resume mid-stage placeholder")
+        request = _mock_request()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await resume_voyage(
+                VOYAGE_ID,
+                body,
+                request,
+                _mock_user(),
+                _mock_voyage(status=VoyageStatus.PLANNING.value),
+                svc,
+            )
+
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_NOT_RESUMABLE"
+        svc.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_validates_request_body_extra_field(self) -> None:
+        with pytest.raises(Exception):
+            StartVoyageRequest.model_validate({"task": "resume placeholder body", "bogus": True})
+
+    @pytest.mark.asyncio
+    async def test_validates_request_body_missing_task(self) -> None:
+        with pytest.raises(Exception):
+            StartVoyageRequest.model_validate({})
+
+    @pytest.mark.asyncio
+    async def test_forbidden_for_other_users_voyage(self) -> None:
+        """The `get_authorized_voyage` dependency raises HTTP 404 when the
+        voyage's user_id != the requester's user.id. Authorization is
+        enforced before `resume_voyage` ever runs, so by the time the
+        endpoint body executes the voyage is guaranteed to belong to the
+        requester. This test sanity-checks that `resume_voyage` does NOT
+        re-validate ownership (avoiding double-checks) — it simply trusts
+        the dependency."""
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        # Voyage owner-mismatch is a dependency-layer concern; the dependency
+        # would short-circuit with 404. Inside the endpoint, we should accept
+        # whatever voyage the dependency injected.
+        body = StartVoyageRequest(task="resume placeholder body")
+        request = _mock_request()
+
+        async def _resume(v: Any) -> None:
+            v.status = VoyageStatus.CHARTED.value
+
+        svc.resume = AsyncMock(side_effect=_resume)
+        result = await resume_voyage(
+            VOYAGE_ID,
+            body,
+            request,
+            _mock_user(),
+            _mock_voyage(status=VoyageStatus.PAUSED.value),
+            svc,
+        )
         assert result.accepted is True
         await asyncio.sleep(0)
         await asyncio.sleep(0)
