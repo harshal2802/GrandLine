@@ -17,6 +17,11 @@ from app.models.enums import CrewRole, VoyageStatus
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
 from app.schemas.captain import VoyagePlanSpec
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +117,26 @@ class CaptainService:
         )
         self._session.add(card)
 
+        # Flush so `plan.id` is realized; then record CrewAction (P8) in
+        # the same open transaction. A failed insert rolls back the whole
+        # operation along with the plan.
+        await self._session.flush()
+
         # Restore replannable status so re-planning is possible
         voyage.status = VoyageStatus.CHARTED.value
 
+        crew_action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PLAN_CREATED,
+            f"Captain charted course with {len(spec.phases)} phases",
+            details={"plan_id": str(plan.id), "phase_count": len(spec.phases)},
+        )
+
         await self._session.commit()
         await self._session.refresh(plan)
+        await self._session.refresh(crew_action)
 
         # Publish event after commit — best-effort, don't fail the request
         try:
@@ -136,6 +156,7 @@ class CaptainService:
                 voyage.id,
                 exc_info=True,
             )
+        await publish_crew_action_recorded(self._mushi, voyage.id, crew_action)
 
         return plan, spec
 

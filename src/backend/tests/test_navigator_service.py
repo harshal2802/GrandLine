@@ -221,10 +221,11 @@ class TestDraftPoneglyphs:
 
         await service.draft_poneglyphs(voyage, _mock_plan())
 
-        assert mock_mushi.publish.await_count == 2
         events = [call.args[1] for call in mock_mushi.publish.call_args_list]
-        assert all(e.event_type == "poneglyph_drafted" for e in events)
-        assert all(e.source_role == CrewRole.NAVIGATOR for e in events)
+        # Phase 16.0: navigator now also publishes crew_action_recorded events.
+        poneglyph_events = [e for e in events if e.event_type == "poneglyph_drafted"]
+        assert len(poneglyph_events) == 2
+        assert all(e.source_role == CrewRole.NAVIGATOR for e in poneglyph_events)
 
     @pytest.mark.asyncio
     async def test_succeeds_when_publish_fails(

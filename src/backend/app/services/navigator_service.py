@@ -13,11 +13,17 @@ from app.den_den_mushi.constants import stream_key
 from app.den_den_mushi.events import PoneglyphDraftedEvent
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.router import DialSystemRouter
+from app.models.crew_action import CrewAction
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.poneglyph import Poneglyph
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
 from app.schemas.navigator import PoneglyphContentSpec
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,11 +135,33 @@ class NavigatorService:
         )
         self._session.add(card)
 
+        # Flush so each Poneglyph has its UUID; then record one CrewAction
+        # per Poneglyph in the same transaction.
+        await self._session.flush()
+
+        crew_actions: list[CrewAction] = []
+        for p in poneglyphs:
+            crew_actions.append(
+                record_action(
+                    self._session,
+                    voyage.id,
+                    CrewRole.NAVIGATOR,
+                    CrewActionType.PONEGLYPH_DRAFTED,
+                    f"Drafted Poneglyph for phase {p.phase_number}",
+                    details={
+                        "poneglyph_id": str(p.id),
+                        "phase_number": p.phase_number,
+                    },
+                )
+            )
+
         voyage.status = VoyageStatus.CHARTED.value
 
         await self._session.commit()
         for p in poneglyphs:
             await self._session.refresh(p)
+        for ca in crew_actions:
+            await self._session.refresh(ca)
 
         # Best-effort publish events
         try:
@@ -153,6 +181,8 @@ class NavigatorService:
                 voyage.id,
                 exc_info=True,
             )
+        for ca in crew_actions:
+            await publish_crew_action_recorded(self._mushi, voyage.id, ca)
 
         return poneglyphs
 

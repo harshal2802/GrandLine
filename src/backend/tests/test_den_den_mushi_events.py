@@ -11,9 +11,12 @@ from pydantic import ValidationError
 
 from app.den_den_mushi.events import (
     CodeGeneratedEvent,
+    CrewActionRecordedEvent,
     DenDenMushiEvent,
     DeploymentCompletedEvent,
     HealthCheckWrittenEvent,
+    PhaseBuildFailedEvent,
+    PhaseBuildStartedEvent,
     PipelineCompletedEvent,
     PipelineFailedEvent,
     PipelineStageCompletedEvent,
@@ -174,6 +177,37 @@ class TestConcreteEventTypes:
         )
         assert event.event_type == "pipeline_failed"
 
+    def test_phase_build_started(self) -> None:
+        event = PhaseBuildStartedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.SHIPWRIGHT,
+            payload={"phase_number": 2},
+        )
+        assert event.event_type == "phase_build_started"
+
+    def test_phase_build_failed(self) -> None:
+        event = PhaseBuildFailedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.SHIPWRIGHT,
+            payload={"phase_number": 2, "code": "BUILD_FAILED", "message": "boom"},
+        )
+        assert event.event_type == "phase_build_failed"
+
+    def test_crew_action_recorded(self) -> None:
+        event = CrewActionRecordedEvent(
+            voyage_id=VOYAGE_ID,
+            source_role=CrewRole.CAPTAIN,
+            payload={
+                "crew_action_id": str(uuid.uuid4()),
+                "event_id": str(uuid.uuid4()),
+                "action_type": "plan_created",
+                "summary": "ok",
+                "created_at": "2026-04-30T00:00:00+00:00",
+                "details": {"plan_id": str(uuid.uuid4())},
+            },
+        )
+        assert event.event_type == "crew_action_recorded"
+
 
 class TestParseEvent:
     def test_parse_voyage_plan_created(self) -> None:
@@ -200,6 +234,10 @@ class TestParseEvent:
             ("pipeline_stage_completed", PipelineStageCompletedEvent),
             ("pipeline_completed", PipelineCompletedEvent),
             ("pipeline_failed", PipelineFailedEvent),
+            # Phase 16.0 (P5 reducer + P3 correlation):
+            ("phase_build_started", PhaseBuildStartedEvent),
+            ("phase_build_failed", PhaseBuildFailedEvent),
+            ("crew_action_recorded", CrewActionRecordedEvent),
         ]
         for event_type, expected_class in types_and_classes:
             data = {

@@ -43,6 +43,11 @@ from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
 from app.schemas.dial_config import resolve_shipwright_max_concurrency
 from app.schemas.pipeline import PipelineStatusSnapshot
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
+)
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
 from app.services.pipeline_guards import (
@@ -104,6 +109,7 @@ class PipelineService:
             require_can_enter_planning(voyage)
         except PipelineError as exc:
             await self._publish_failed(voyage.id, exc.code, exc.message, "PLANNING")
+            await self._record_pipeline_failed(voyage.id, exc.code, "PLANNING")
             raise
 
         try:
@@ -112,6 +118,7 @@ class PipelineService:
             )
         except PipelineError as exc:
             await self._publish_failed(voyage.id, exc.code, exc.message, "PLANNING")
+            await self._record_pipeline_failed(voyage.id, exc.code, "PLANNING")
             raise
 
         run_start = time.monotonic()
@@ -165,6 +172,11 @@ class PipelineService:
 
         if final_state.get("error"):
             err = final_state["error"] or {}
+            await self._record_pipeline_failed(
+                voyage.id,
+                err.get("code", "UNKNOWN"),
+                err.get("stage", "UNKNOWN"),
+            )
             raise PipelineError(
                 err.get("code", "UNKNOWN"),
                 err.get("message", "Pipeline failed"),
@@ -174,14 +186,50 @@ class PipelineService:
             return
 
         duration = time.monotonic() - run_start
+        deployment_url: str | None = None
+        deployment_id = final_state.get("deployment_id")
+        if deployment_id is not None:
+            dep_row = await self._session.execute(
+                select(Deployment).where(Deployment.id == deployment_id)
+            )
+            dep = dep_row.scalar_one_or_none()
+            if dep is not None:
+                deployment_url = dep.url
+
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PIPELINE_COMPLETED,
+            f"Pipeline completed in {duration:.1f}s",
+            details={
+                "duration_seconds": duration,
+                "deployment_url": deployment_url,
+            },
+        )
+        await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
+
         logger.info("Pipeline completed for voyage %s in %.2fs", voyage.id, duration)
 
     async def pause(self, voyage: Voyage) -> None:
         if voyage.status in _TERMINAL_STATUSES:
             return
+        prev_status = voyage.status
         voyage.status = VoyageStatus.PAUSED.value
         self._session.add(voyage)
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PIPELINE_PAUSED,
+            "Pipeline paused",
+            details={"prev_status": prev_status},
+        )
         await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
 
     async def resume(self, voyage: Voyage) -> None:
         """Flip a PAUSED or FAILED voyage back to CHARTED.
@@ -209,16 +257,38 @@ class PipelineService:
                 f"Voyage status is {voyage.status}; cancel and restart, "
                 f"or wait for the current run to reach a resumable state",
             )
+        prev_status = voyage.status
         voyage.status = VoyageStatus.CHARTED.value
         self._session.add(voyage)
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PIPELINE_RESUMED,
+            "Pipeline resumed",
+            details={"prev_status": prev_status},
+        )
         await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
 
     async def cancel(self, voyage: Voyage) -> None:
         if voyage.status in _TERMINAL_STATUSES:
             return
+        prev_status = voyage.status
         voyage.status = VoyageStatus.CANCELLED.value
         self._session.add(voyage)
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PIPELINE_CANCELLED,
+            "Pipeline cancelled",
+            details={"prev_status": prev_status},
+        )
         await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
 
     async def get_status(self, voyage: Voyage) -> PipelineStatusSnapshot:
         plan_exists_row = await self._session.execute(
@@ -340,10 +410,20 @@ class PipelineService:
             return
         voyage.status = VoyageStatus.FAILED.value
         self._session.add(voyage)
+        action = record_action(
+            self._session,
+            voyage_id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PIPELINE_FAILED,
+            f"Pipeline failed at {stage}"[:200],
+            details={"stage": stage, "code": code},
+        )
         try:
             await self._session.commit()
+            await self._session.refresh(action)
         except Exception:
             logger.warning("Failed to mark voyage %s as FAILED", voyage_id, exc_info=True)
+            return
         await self._publish(
             voyage_id,
             PipelineFailedEvent(
@@ -352,6 +432,39 @@ class PipelineService:
                 payload={"stage": stage, "code": code, "message": message},
             ),
         )
+        await publish_crew_action_recorded(self._mushi, voyage_id, action)
+
+    async def _record_pipeline_failed(
+        self,
+        voyage_id: uuid.UUID,
+        code: str,
+        stage: str,
+    ) -> None:
+        """Best-effort durable PIPELINE_FAILED CrewAction (P8).
+
+        Used when a failure path doesn't go through `_mark_failed` (which
+        already records its own row). Never raises — a write failure logs
+        and returns so the caller's re-raise semantics are preserved.
+        """
+        try:
+            action = record_action(
+                self._session,
+                voyage_id,
+                CrewRole.CAPTAIN,
+                CrewActionType.PIPELINE_FAILED,
+                f"Pipeline failed at {stage}"[:200],
+                details={"stage": stage, "code": code},
+            )
+            await self._session.commit()
+            await self._session.refresh(action)
+        except Exception:
+            logger.warning(
+                "Failed to record PIPELINE_FAILED CrewAction for voyage %s",
+                voyage_id,
+                exc_info=True,
+            )
+            return
+        await publish_crew_action_recorded(self._mushi, voyage_id, action)
 
 
 __all__ = ["PipelineService"]

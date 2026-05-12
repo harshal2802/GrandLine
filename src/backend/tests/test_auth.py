@@ -409,3 +409,104 @@ class TestAuthService:
         with pytest.raises(AuthError) as exc_info:
             await refresh_tokens(mock_session, mock_redis, refresh_token=access)
         assert exc_info.value.code == "INVALID_TOKEN"
+
+
+# ---- Cookie issuance + logout (Phase 16.0 Decision 4) ----
+
+
+class TestAccessCookie:
+    @pytest.mark.asyncio
+    async def test_register_endpoint_sets_access_cookie(self) -> None:
+        from fastapi import Response
+
+        from app.api.v1.auth import register_user
+
+        response = Response()
+        body = RegisterRequest(email="zoro@grandline.dev", username="zoro", password="three-swords")
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = MagicMock(
+            scalar_one_or_none=MagicMock(return_value=None)
+        )
+        mock_redis = AsyncMock()
+
+        token_pair = await register_user(body, response, mock_session, mock_redis)
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert "access_token=" in cookie_header
+        assert token_pair.access_token in cookie_header
+        assert "samesite=lax" in cookie_header.lower()
+        assert "httponly" not in cookie_header.lower()
+
+    @pytest.mark.asyncio
+    async def test_login_endpoint_sets_access_cookie(self) -> None:
+        from fastapi import Response
+
+        from app.api.v1.auth import login_user
+
+        response = Response()
+        body = LoginRequest(email="zoro@grandline.dev", password="three-swords")
+
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.hashed_password = hash_password("three-swords")
+        user.is_active = True
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = MagicMock(
+            scalar_one_or_none=MagicMock(return_value=user)
+        )
+        mock_redis = AsyncMock()
+
+        token_pair = await login_user(body, response, mock_session, mock_redis)
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert "access_token=" in cookie_header
+        assert token_pair.access_token in cookie_header
+
+    @pytest.mark.asyncio
+    async def test_refresh_endpoint_sets_access_cookie(self) -> None:
+        from fastapi import Response
+
+        from app.api.v1.auth import refresh
+        from app.core.security import create_refresh_token
+
+        user_id = uuid.uuid4()
+        rt = create_refresh_token(user_id)
+        body = RefreshRequest(refresh_token=rt)
+        response = Response()
+
+        user = MagicMock()
+        user.id = user_id
+        user.is_active = True
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = MagicMock(
+            scalar_one_or_none=MagicMock(return_value=user)
+        )
+        mock_redis = AsyncMock()
+        # Redis stores the active refresh token by jti; non-empty value means
+        # "still valid" (the service revokes on use).
+        mock_redis.get = AsyncMock(return_value=str(user_id))
+        mock_redis.delete = AsyncMock(return_value=1)
+        mock_redis.setex = AsyncMock(return_value=True)
+
+        token_pair = await refresh(body, response, mock_session, mock_redis)
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert "access_token=" in cookie_header
+        assert token_pair.access_token in cookie_header
+
+    @pytest.mark.asyncio
+    async def test_logout_endpoint_clears_cookie(self) -> None:
+        from fastapi import Response
+
+        from app.api.v1.auth import logout
+
+        response = Response()
+
+        result = await logout(response)
+        assert result == {"ok": True}
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert "access_token=" in cookie_header
+        # Max-Age=0 clears the cookie.
+        assert "max-age=0" in cookie_header.lower()

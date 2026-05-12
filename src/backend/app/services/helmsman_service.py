@@ -27,6 +27,7 @@ from app.den_den_mushi.events import (
 from app.den_den_mushi.mushi import DenDenMushi
 from app.deployment.backend import DeploymentBackend
 from app.dial_system.router import DialSystemRouter
+from app.models.crew_action import CrewAction
 from app.models.deployment import Deployment
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.vivre_card import VivreCard
@@ -34,6 +35,11 @@ from app.models.voyage import Voyage
 from app.schemas.deployment import (
     DeploymentResponse,
     DeploymentTier,
+)
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
 )
 from app.services.git_service import GitError, GitService
 
@@ -225,6 +231,23 @@ class HelmsmanService:
         try:
             await self._session.flush()
 
+            # Record DEPLOYMENT_STARTED before backend invoke (P8). The
+            # row commits with the rest of the operation; on backend
+            # failure we still emit a separate DEPLOYMENT_FAILED below.
+            started_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.HELMSMAN,
+                CrewActionType.DEPLOYMENT_STARTED,
+                f"Deployment started: {tier}",
+                details={
+                    "deployment_id": str(deployment.id),
+                    "tier": tier,
+                    "git_ref": git_ref,
+                },
+            )
+            await self._session.flush()
+
             state: dict[str, Any] = {
                 "voyage_id": voyage.id,
                 "user_id": user_id,
@@ -262,11 +285,43 @@ class HelmsmanService:
         )
         self._session.add(card)
 
+        completion_action: CrewAction
+        if deployment.status == "completed":
+            completion_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.HELMSMAN,
+                CrewActionType.DEPLOYMENT_COMPLETED,
+                f"Deployment completed: {tier}",
+                details={
+                    "deployment_id": str(deployment.id),
+                    "tier": tier,
+                    "url": deployment.url,
+                },
+            )
+        else:
+            completion_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.HELMSMAN,
+                CrewActionType.DEPLOYMENT_FAILED,
+                f"Deployment failed: {tier}",
+                details={
+                    "deployment_id": str(deployment.id),
+                    "tier": tier,
+                    "diagnosis": deployment.diagnosis,
+                },
+            )
+
         voyage.status = VoyageStatus.CHARTED.value
         await self._session.commit()
         await self._session.refresh(deployment)
+        await self._session.refresh(started_action)
+        await self._session.refresh(completion_action)
 
         await self._publish_events(voyage.id, deployment)
+        await publish_crew_action_recorded(self._mushi, voyage.id, started_action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, completion_action)
 
         if deployment.status == "failed":
             summary = "Deployment failed"
