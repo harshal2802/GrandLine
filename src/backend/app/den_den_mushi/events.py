@@ -88,6 +88,42 @@ class PipelineFailedEvent(DenDenMushiEvent):
     event_type: Literal["pipeline_failed"] = "pipeline_failed"
 
 
+class PhaseBuildStartedEvent(DenDenMushiEvent):
+    """Published by ShipwrightService when a phase enters BUILDING.
+
+    Payload contract: ``{"phase_number": int}``.
+    """
+
+    event_type: Literal["phase_build_started"] = "phase_build_started"
+
+
+class PhaseBuildFailedEvent(DenDenMushiEvent):
+    """Published by ShipwrightService when a phase build fails.
+
+    Payload contract: ``{"phase_number": int, "code": str, "message": str}``.
+    """
+
+    event_type: Literal["phase_build_failed"] = "phase_build_failed"
+
+
+class CrewActionRecordedEvent(DenDenMushiEvent):
+    """Published after a CrewAction row is committed (best-effort, P3+P13).
+
+    Payload contract::
+
+        {
+            "crew_action_id": str (UUID),
+            "event_id": str (UUID; matches details.event_id; P3 correlation),
+            "action_type": str (CrewActionType value),
+            "summary": str,
+            "created_at": str (ISO8601; P13 canonical timestamp),
+            "details": dict,
+        }
+    """
+
+    event_type: Literal["crew_action_recorded"] = "crew_action_recorded"
+
+
 AnyEvent = Annotated[
     VoyagePlanCreatedEvent
     | PoneglyphDraftedEvent
@@ -105,7 +141,10 @@ AnyEvent = Annotated[
     | PipelineStageEnteredEvent
     | PipelineStageCompletedEvent
     | PipelineCompletedEvent
-    | PipelineFailedEvent,
+    | PipelineFailedEvent
+    | PhaseBuildStartedEvent
+    | PhaseBuildFailedEvent
+    | CrewActionRecordedEvent,
     Field(discriminator="event_type"),
 ]
 

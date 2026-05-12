@@ -157,11 +157,11 @@ class TestChartCourse:
 
         await service.chart_course(voyage, "Build a REST API with authentication")
 
-        mock_mushi.publish.assert_awaited_once()
-        call_args = mock_mushi.publish.call_args
-        event = call_args.args[1]
-        assert event.event_type == "voyage_plan_created"
-        assert event.source_role == CrewRole.CAPTAIN
+        # Captain publishes voyage_plan_created and (Phase 16.0) crew_action_recorded.
+        published = [c.args[1] for c in mock_mushi.publish.await_args_list]
+        plan_events = [e for e in published if e.event_type == "voyage_plan_created"]
+        assert len(plan_events) == 1
+        assert plan_events[0].source_role == CrewRole.CAPTAIN
 
     @pytest.mark.asyncio
     async def test_creates_vivre_card_checkpoint(

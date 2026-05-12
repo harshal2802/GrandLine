@@ -414,7 +414,9 @@ class TestBuildCodeHappyPath:
         )
         events = [c.args[1] for c in mock_mushi.publish.call_args_list]
         types = {e.event_type for e in events}
-        assert {"code_generated", "tests_passed"} == types
+        # Phase 16.0: shipwright now also publishes phase_build_started and crew_action_recorded.
+        assert {"code_generated", "tests_passed"}.issubset(types)
+        assert "phase_build_started" in types
 
     @pytest.mark.asyncio
     async def test_succeeds_when_event_publish_fails(
@@ -527,7 +529,12 @@ class TestBuildCodeIterationLoop:
         await service.build_code(
             _mock_voyage(), 1, _mock_poneglyph(), [_mock_health_check()], USER_ID
         )
-        mock_mushi.publish.assert_not_awaited()
+        # Phase 16.0: phase_build_started + phase_build_failed + crew_action_recorded
+        # may fire even when iteration loop fails. Assert NO success-path events.
+        events = [c.args[1] for c in mock_mushi.publish.call_args_list]
+        types = {e.event_type for e in events}
+        assert "tests_passed" not in types
+        assert "code_generated" not in types
 
     @pytest.mark.asyncio
     async def test_persists_max_iterations_run(

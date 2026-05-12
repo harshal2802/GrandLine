@@ -21,6 +21,7 @@ from app.den_den_mushi.events import (
 )
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.router import DialSystemRouter
+from app.models.crew_action import CrewAction
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
@@ -29,6 +30,11 @@ from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage
 from app.schemas.doctor import HealthCheckSpec, ValidationResultResponse
 from app.schemas.execution import ExecutionRequest
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
+)
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
 
@@ -155,11 +161,33 @@ class DoctorService:
         )
         self._session.add(card)
 
+        # Flush so each HealthCheck has its UUID; then record CrewActions.
+        await self._session.flush()
+
+        crew_actions: list[CrewAction] = []
+        for hc in health_checks:
+            crew_actions.append(
+                record_action(
+                    self._session,
+                    voyage.id,
+                    CrewRole.DOCTOR,
+                    CrewActionType.HEALTH_CHECK_WRITTEN,
+                    f"Wrote health check for phase {hc.phase_number}",
+                    details={
+                        "health_check_id": str(hc.id),
+                        "phase_number": hc.phase_number,
+                        "framework": hc.framework,
+                    },
+                )
+            )
+
         voyage.status = VoyageStatus.CHARTED.value
 
         await self._session.commit()
         for hc in health_checks:
             await self._session.refresh(hc)
+        for ca in crew_actions:
+            await self._session.refresh(ca)
 
         await self._maybe_commit_to_git(voyage, user_id, health_checks)
 
@@ -181,6 +209,8 @@ class DoctorService:
                 voyage.id,
                 exc_info=True,
             )
+        for ca in crew_actions:
+            await publish_crew_action_recorded(self._mushi, voyage.id, ca)
 
         return health_checks
 
@@ -272,8 +302,38 @@ class DoctorService:
             hc.last_run_at = now
             hc.last_validation_run_id = run.id
 
+        if passed:
+            crew_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.DOCTOR,
+                CrewActionType.VALIDATION_PASSED,
+                "Validation passed",
+                details={
+                    "validation_run_id": str(run.id),
+                    "passed_count": passed_count,
+                    "total_count": len(health_checks),
+                },
+            )
+        else:
+            short = (truncated[-120:] if truncated else "").strip().splitlines()[-1:]
+            short_str = short[0] if short else "see logs"
+            crew_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.DOCTOR,
+                CrewActionType.VALIDATION_FAILED,
+                f"Validation failed: {short_str}"[:200],
+                details={
+                    "validation_run_id": str(run.id),
+                    "exit_code": exec_result.exit_code,
+                    "failed_count": failed_count,
+                },
+            )
+
         voyage.status = VoyageStatus.CHARTED.value
         await self._session.commit()
+        await self._session.refresh(crew_action)
 
         response = ValidationResultResponse(
             voyage_id=voyage.id,
@@ -310,6 +370,7 @@ class DoctorService:
                 voyage.id,
                 exc_info=True,
             )
+        await publish_crew_action_recorded(self._mushi, voyage.id, crew_action)
 
         return response
 

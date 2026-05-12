@@ -220,10 +220,11 @@ class TestWriteHealthChecks:
     ) -> None:
         voyage = _mock_voyage()
         await service.write_health_checks(voyage, _poneglyphs(), USER_ID)
-        assert mock_mushi.publish.await_count == 2
         events = [call.args[1] for call in mock_mushi.publish.call_args_list]
-        assert all(e.event_type == "health_check_written" for e in events)
-        assert all(e.source_role == CrewRole.DOCTOR for e in events)
+        # Phase 16.0: doctor now also publishes crew_action_recorded events.
+        hc_events = [e for e in events if e.event_type == "health_check_written"]
+        assert len(hc_events) == 2
+        assert all(e.source_role == CrewRole.DOCTOR for e in hc_events)
 
     @pytest.mark.asyncio
     async def test_succeeds_when_publish_fails(
@@ -461,8 +462,9 @@ class TestValidateCode:
         voyage = _mock_voyage()
         await service.validate_code(voyage, USER_ID, {"src/a.py": "pass"})
 
-        event = mock_mushi.publish.call_args.args[1]
-        assert event.event_type == "validation_passed"
+        # Phase 16.0: doctor publishes both validation_passed AND crew_action_recorded.
+        events = [c.args[1] for c in mock_mushi.publish.await_args_list]
+        assert any(e.event_type == "validation_passed" for e in events)
 
     @pytest.mark.asyncio
     async def test_publishes_failed_event_on_fail(
@@ -488,8 +490,9 @@ class TestValidateCode:
         voyage = _mock_voyage()
         await service.validate_code(voyage, USER_ID, {"src/a.py": "pass"})
 
-        event = mock_mushi.publish.call_args.args[1]
-        assert event.event_type == "validation_failed"
+        # Phase 16.0: doctor publishes both validation_failed AND crew_action_recorded.
+        events = [c.args[1] for c in mock_mushi.publish.await_args_list]
+        assert any(e.event_type == "validation_failed" for e in events)
 
     @pytest.mark.asyncio
     async def test_raises_when_no_health_checks(

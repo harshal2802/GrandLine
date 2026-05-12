@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -21,10 +22,16 @@ from sqlalchemy.orm import attributes as sa_attrs
 
 from app.crew.shipwright_graph import build_shipwright_graph
 from app.den_den_mushi.constants import stream_key
-from app.den_den_mushi.events import CodeGeneratedEvent, TestsPassedEvent
+from app.den_den_mushi.events import (
+    CodeGeneratedEvent,
+    PhaseBuildFailedEvent,
+    PhaseBuildStartedEvent,
+    TestsPassedEvent,
+)
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.router import DialSystemRouter
 from app.models.build_artifact import BuildArtifact
+from app.models.crew_action import CrewAction
 from app.models.enums import CrewRole
 from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
@@ -32,6 +39,11 @@ from app.models.shipwright_run import ShipwrightRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage
 from app.schemas.shipwright import BuildResultResponse
+from app.services.crew_action_helper import (
+    CrewActionType,
+    publish_crew_action_recorded,
+    record_action,
+)
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
 
@@ -115,7 +127,40 @@ class ShipwrightService:
             )
 
         await self._set_phase_status(voyage, phase_key, PHASE_STATUS_BUILDING)
+
+        # CrewAction: build started — flushed below alongside the phase
+        # status update so the row is visible in the run loop's session
+        # if any per-iteration commit happens via _checkpoint_iteration.
+        started_action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.SHIPWRIGHT,
+            CrewActionType.PHASE_BUILD_STARTED,
+            f"Started building phase {phase_number}",
+            details={"phase_number": phase_number},
+        )
         await self._session.flush()
+
+        # Publish PhaseBuildStartedEvent best-effort (P5 reducer rule).
+        try:
+            await self._mushi.publish(
+                stream_key(voyage.id),
+                PhaseBuildStartedEvent(
+                    voyage_id=voyage.id,
+                    source_role=CrewRole.SHIPWRIGHT,
+                    payload={"phase_number": phase_number},
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to publish phase_build_started for voyage %s phase %s",
+                voyage.id,
+                phase_number,
+                exc_info=True,
+            )
+        await publish_crew_action_recorded(self._mushi, voyage.id, started_action)
+
+        run_started_at = time.monotonic()
 
         state: dict[str, Any] = {
             "voyage_id": voyage.id,
@@ -166,12 +211,46 @@ class ShipwrightService:
                     break
 
                 state["last_test_output"] = state.get("stdout", "")
-        except Exception:
+        except Exception as exc:
             await self._set_phase_status(voyage, phase_key, PHASE_STATUS_FAILED)
+            failed_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.SHIPWRIGHT,
+                CrewActionType.PHASE_BUILD_FAILED,
+                f"Phase {phase_number} failed: BUILD_INTERNAL"[:200],
+                details={
+                    "phase_number": phase_number,
+                    "code": "BUILD_INTERNAL",
+                    "message": str(exc)[:500],
+                },
+            )
             # Commit (not just flush) so the FAILED state survives even when
             # the caller's `async with session_factory()` rolls back on the
             # exception we're about to re-raise (issue #39).
             await self._session.commit()
+            await self._session.refresh(failed_action)
+            try:
+                await self._mushi.publish(
+                    stream_key(voyage.id),
+                    PhaseBuildFailedEvent(
+                        voyage_id=voyage.id,
+                        source_role=CrewRole.SHIPWRIGHT,
+                        payload={
+                            "phase_number": phase_number,
+                            "code": "BUILD_INTERNAL",
+                            "message": str(exc)[:500],
+                        },
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to publish phase_build_failed for voyage %s phase %s",
+                    voyage.id,
+                    phase_number,
+                    exc_info=True,
+                )
+            await publish_crew_action_recorded(self._mushi, voyage.id, failed_action)
             raise
 
         passed = state.get("exit_code") == 0
@@ -238,14 +317,75 @@ class ShipwrightService:
         await self._set_phase_status(
             voyage, phase_key, PHASE_STATUS_BUILT if passed else PHASE_STATUS_FAILED
         )
+
+        duration_seconds = time.monotonic() - run_started_at
+        completion_action: CrewAction
+        if passed:
+            completion_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.SHIPWRIGHT,
+                CrewActionType.PHASE_BUILD_COMPLETED,
+                (
+                    f"Phase {phase_number} built ({iteration_count} iterations, "
+                    f"{run.passed_count}/{run.total_count} tests passed)"
+                )[:200],
+                details={
+                    "phase_number": phase_number,
+                    "iteration_count": iteration_count,
+                    "passed": run.passed_count,
+                    "total": run.total_count,
+                    "duration_seconds": duration_seconds,
+                },
+            )
+        else:
+            code = "BUILD_PARSE_FAILED" if final_parse_error else "MAX_ITERATIONS"
+            completion_action = record_action(
+                self._session,
+                voyage.id,
+                CrewRole.SHIPWRIGHT,
+                CrewActionType.PHASE_BUILD_FAILED,
+                f"Phase {phase_number} failed: {code}"[:200],
+                details={
+                    "phase_number": phase_number,
+                    "code": code,
+                    "message": (final_parse_error or "max iterations reached")[:500],
+                },
+            )
+
         await self._session.commit()
         await self._session.refresh(run)
+        await self._session.refresh(completion_action)
         for artifact in artifacts:
             await self._session.refresh(artifact)
 
         if passed:
             await self._maybe_commit_to_git(voyage, user_id, phase_number, artifacts)
             await self._publish_success_events(voyage.id, phase_number, run, artifacts)
+        else:
+            try:
+                await self._mushi.publish(
+                    stream_key(voyage.id),
+                    PhaseBuildFailedEvent(
+                        voyage_id=voyage.id,
+                        source_role=CrewRole.SHIPWRIGHT,
+                        payload={
+                            "phase_number": phase_number,
+                            "code": (
+                                "BUILD_PARSE_FAILED" if final_parse_error else "MAX_ITERATIONS"
+                            ),
+                            "message": (final_parse_error or "max iterations reached")[:500],
+                        },
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to publish phase_build_failed for voyage %s phase %s",
+                    voyage.id,
+                    phase_number,
+                    exc_info=True,
+                )
+        await publish_crew_action_recorded(self._mushi, voyage.id, completion_action)
 
         if final_parse_error is not None:
             raise ShipwrightError(

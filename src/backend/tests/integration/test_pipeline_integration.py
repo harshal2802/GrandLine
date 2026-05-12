@@ -54,6 +54,7 @@ from app.den_den_mushi.mushi import DenDenMushi
 from app.deployment.in_process import InProcessDeploymentBackend
 from app.dial_system.router import DialSystemRouter
 from app.models.build_artifact import BuildArtifact
+from app.models.crew_action import CrewAction
 from app.models.deployment import Deployment
 from app.models.dial_config import DialConfig
 from app.models.enums import CrewRole, VoyageStatus
@@ -314,10 +315,14 @@ class TestHappyPath:
         assert deployments[0].status == "completed"
         assert deployments[0].url is not None
 
-        # event sequence sanity check
+        # event sequence sanity check. Phase 16.0 appends a trailing
+        # `crew_action_recorded` event for the PIPELINE_COMPLETED CrewAction,
+        # so the "pipeline_completed" event is the last *pipeline-lifecycle*
+        # event but not literally the last frame on the stream.
         types = await _replay_event_types(mushi, voyage.id)
         assert types[0] == "pipeline_started"
-        assert types[-1] == "pipeline_completed"
+        pipeline_lifecycle = [t for t in types if t != "crew_action_recorded"]
+        assert pipeline_lifecycle[-1] == "pipeline_completed"
         assert types.count("pipeline_stage_entered") == 6
         assert types.count("pipeline_stage_completed") == 6
         # per-service events
@@ -328,6 +333,10 @@ class TestHappyPath:
         assert types.count("tests_passed") == 3
         assert types.count("validation_passed") == 1
         assert types.count("deployment_completed") == 1
+        # Phase 16.0: each major CrewAction publishes a crew_action_recorded
+        # event after its commit. Don't pin an exact count (it tracks the
+        # taxonomy and may grow); just assert presence.
+        assert types.count("crew_action_recorded") >= 1
 
         # Vivre cards: at minimum 12 (one per stage_entered + stage_completed).
         cards = (
@@ -336,6 +345,27 @@ class TestHappyPath:
             .all()
         )
         assert len(cards) >= 12
+
+        # Phase 16.0: CrewAction rows are durable for the major checkpoints.
+        crew_actions = (
+            (await db_session.execute(select(CrewAction).where(CrewAction.voyage_id == voyage.id)))
+            .scalars()
+            .all()
+        )
+        action_types = {a.action_type for a in crew_actions}
+        # Major checkpoints recorded; PHASE_BUILD_STARTED/COMPLETED appear per
+        # phase (3x). Ad-hoc presence checks — not an exact-count assertion.
+        assert "plan_created" in action_types
+        assert "poneglyph_drafted" in action_types
+        assert "health_check_written" in action_types
+        assert "phase_build_started" in action_types
+        assert "phase_build_completed" in action_types
+        assert "validation_passed" in action_types
+        assert "deployment_started" in action_types
+        assert "deployment_completed" in action_types
+        assert "pipeline_completed" in action_types
+        # Every CrewAction carries an event_id for P3 correlation.
+        assert all(a.details is not None and "event_id" in a.details for a in crew_actions)
 
     async def test_event_ordering(
         self,
@@ -362,8 +392,12 @@ class TestHappyPath:
         await service.start(voyage, user.id, "ordered pipeline", "preview")
 
         events = await _replay_events(mushi, voyage.id)
-        assert isinstance(events[0], PipelineStartedEvent)
-        assert isinstance(events[-1], PipelineCompletedEvent)
+        # Phase 16.0 introduced CrewActionRecordedEvent which can interleave with
+        # pipeline events. The pipeline lifecycle invariants below run against the
+        # subset of pipeline_* events.
+        pipeline_events = [e for e in events if e.event_type.startswith("pipeline_")]
+        assert isinstance(pipeline_events[0], PipelineStartedEvent)
+        assert isinstance(pipeline_events[-1], PipelineCompletedEvent)
 
         # For every stage, the entered event precedes its completed event.
         for stage in (
