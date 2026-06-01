@@ -663,6 +663,60 @@ class TestCancelVoyage:
 
 
 # ---------------------------------------------------------------------------
+# POST /inject and /redirect (Phase 17 intervention)
+# ---------------------------------------------------------------------------
+
+
+class TestIntervention:
+    @pytest.mark.asyncio
+    async def test_inject_returns_action_id(self) -> None:
+        from app.api.v1.pipeline import inject_context
+        from app.schemas.pipeline import InjectContextRequest
+
+        svc = _mock_pipeline_service()
+        action = MagicMock()
+        action.id = uuid.uuid4()
+        svc.inject = AsyncMock(return_value=action)
+        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
+
+        body = InjectContextRequest(context="use redis", phase_number=2)
+        result = await inject_context(VOYAGE_ID, body, _mock_user(), voyage, svc)
+
+        assert result.crew_action_id == action.id
+        svc.inject.assert_awaited_once_with(voyage, "use redis", 2)
+
+    @pytest.mark.asyncio
+    async def test_inject_translates_pipeline_error(self) -> None:
+        from app.api.v1.pipeline import inject_context
+        from app.schemas.pipeline import InjectContextRequest
+
+        svc = _mock_pipeline_service()
+        svc.inject = AsyncMock(side_effect=PipelineError("VOYAGE_TERMINAL", "no"))
+        body = InjectContextRequest(context="x")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await inject_context(VOYAGE_ID, body, _mock_user(), _mock_voyage(), svc)
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_TERMINAL"
+
+    @pytest.mark.asyncio
+    async def test_redirect_returns_action_id(self) -> None:
+        from app.api.v1.pipeline import redirect_phase
+        from app.schemas.pipeline import RedirectPhaseRequest
+
+        svc = _mock_pipeline_service()
+        action = MagicMock()
+        action.id = uuid.uuid4()
+        svc.redirect = AsyncMock(return_value=action)
+        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
+
+        body = RedirectPhaseRequest(phase_number=3, instruction="try again")
+        result = await redirect_phase(VOYAGE_ID, body, _mock_user(), voyage, svc)
+
+        assert result.crew_action_id == action.id
+        svc.redirect.assert_awaited_once_with(voyage, 3, "try again")
+
+
+# ---------------------------------------------------------------------------
 # GET /status
 # ---------------------------------------------------------------------------
 

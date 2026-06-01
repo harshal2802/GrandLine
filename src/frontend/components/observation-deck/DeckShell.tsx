@@ -14,6 +14,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { CommandPalette } from "./CommandPalette";
 import { HelpDialog } from "./HelpDialog";
+import { InterventionControls } from "./InterventionControls";
 
 const TABS = [
   { href: "/app/sea-chart", label: "Sea Chart" },
@@ -66,7 +67,10 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
         </div>
-        <ConnectionState onReconnect={reconnect} />
+        <div className="flex items-center gap-4">
+          {voyageId && <InterventionControls voyageId={voyageId} />}
+          <ConnectionState onReconnect={reconnect} />
+        </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
         {!focusMode && <Sidebar />}

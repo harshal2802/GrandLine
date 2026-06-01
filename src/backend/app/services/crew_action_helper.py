@@ -53,6 +53,9 @@ class CrewActionType(str, enum.Enum):
     PIPELINE_CANCELLED = "pipeline_cancelled"
     PIPELINE_FAILED = "pipeline_failed"
     PIPELINE_COMPLETED = "pipeline_completed"
+    # User interventions (Phase 17).
+    CONTEXT_INJECTED = "context_injected"
+    PHASE_REDIRECTED = "phase_redirected"
 
 
 def record_action(
