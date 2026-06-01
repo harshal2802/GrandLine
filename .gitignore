@@ -34,6 +34,9 @@ htmlcov/
 .pytest_cache/
 .coverage
 
+# Redis (local dev/integration snapshots)
+*.rdb
+
 # Misc
 *.log
 tmp.md
