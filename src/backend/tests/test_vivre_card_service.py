@@ -42,6 +42,7 @@ class TestCheckpoint:
         from app.services.vivre_card_service import checkpoint
 
         session = AsyncMock()
+        session.add = MagicMock()
         state = {"step": 3, "messages": ["hello"]}
 
         card = await checkpoint(
@@ -65,6 +66,7 @@ class TestCheckpoint:
         from app.services.vivre_card_service import checkpoint
 
         session = AsyncMock()
+        session.add = MagicMock()
         nested_state = {
             "step": 5,
             "context": {"messages": [{"role": "user", "content": "plan"}]},
@@ -91,6 +93,7 @@ class TestRestore:
         expected_card = _make_card(card_id=card_id, voyage_id=VOYAGE_ID)
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = expected_card
         session.execute.return_value = mock_result
@@ -105,6 +108,7 @@ class TestRestore:
         from app.services.vivre_card_service import VivreCardError, restore
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         session.execute.return_value = mock_result
@@ -124,6 +128,7 @@ class TestListCards:
         cards = [_make_card(voyage_id=VOYAGE_ID) for _ in range(3)]
 
         session = AsyncMock()
+        session.add = MagicMock()
         # First call: items query
         items_result = MagicMock()
         items_result.scalars.return_value.all.return_value = cards
@@ -144,6 +149,7 @@ class TestListCards:
         cards = [_make_card(voyage_id=VOYAGE_ID, crew_member="captain")]
 
         session = AsyncMock()
+        session.add = MagicMock()
         items_result = MagicMock()
         items_result.scalars.return_value.all.return_value = cards
         count_result = MagicMock()
@@ -162,6 +168,7 @@ class TestListCards:
         cards = [_make_card(voyage_id=VOYAGE_ID)]
 
         session = AsyncMock()
+        session.add = MagicMock()
         items_result = MagicMock()
         items_result.scalars.return_value.all.return_value = cards
         count_result = MagicMock()
@@ -178,6 +185,7 @@ class TestListCards:
         from app.services.vivre_card_service import list_cards
 
         session = AsyncMock()
+        session.add = MagicMock()
         items_result = MagicMock()
         items_result.scalars.return_value.all.return_value = []
         count_result = MagicMock()
@@ -199,6 +207,7 @@ class TestDiff:
         card_b = _make_card(state_data={"step": 1, "output": "done"})
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result_a = MagicMock()
         mock_result_a.scalar_one_or_none.return_value = card_a
         mock_result_b = MagicMock()
@@ -219,6 +228,7 @@ class TestDiff:
         card_b = _make_card(state_data={"step": 1})
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result_a = MagicMock()
         mock_result_a.scalar_one_or_none.return_value = card_a
         mock_result_b = MagicMock()
@@ -239,6 +249,7 @@ class TestDiff:
         card_b = _make_card(state_data={"step": 3, "status": "done"})
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result_a = MagicMock()
         mock_result_a.scalar_one_or_none.return_value = card_a
         mock_result_b = MagicMock()
@@ -259,6 +270,7 @@ class TestDiff:
         card_b = _make_card(state_data=state.copy())
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result_a = MagicMock()
         mock_result_a.scalar_one_or_none.return_value = card_a
         mock_result_b = MagicMock()
@@ -276,6 +288,7 @@ class TestDiff:
         from app.services.vivre_card_service import VivreCardError, diff
 
         session = AsyncMock()
+        session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         session.execute.return_value = mock_result
@@ -292,6 +305,7 @@ class TestCleanup:
         from app.services.vivre_card_service import cleanup
 
         session = AsyncMock()
+        session.add = MagicMock()
         # First query: distinct crew members
         crew_result = MagicMock()
         crew_result.scalars.return_value.all.return_value = ["captain"]
@@ -316,6 +330,7 @@ class TestCleanup:
         from app.services.vivre_card_service import cleanup
 
         session = AsyncMock()
+        session.add = MagicMock()
         crew_result = MagicMock()
         crew_result.scalars.return_value.all.return_value = []
         session.execute.return_value = crew_result
@@ -330,6 +345,7 @@ class TestCleanup:
         from app.services.vivre_card_service import cleanup
 
         session = AsyncMock()
+        session.add = MagicMock()
         crew_result = MagicMock()
         crew_result.scalars.return_value.all.return_value = ["navigator"]
         # Only 2 cards, keep_last_n=5 — nothing to delete

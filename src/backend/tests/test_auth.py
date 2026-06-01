@@ -231,6 +231,7 @@ class TestAuthService:
         from app.services.auth_service import register
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
@@ -258,6 +259,7 @@ class TestAuthService:
         from app.services.auth_service import AuthError, register
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = MagicMock()  # existing user
         mock_session.execute.return_value = mock_result
@@ -285,6 +287,7 @@ class TestAuthService:
         mock_user.is_active = True
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_session.execute.return_value = mock_result
@@ -307,6 +310,7 @@ class TestAuthService:
         mock_user.is_active = True
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_session.execute.return_value = mock_result
@@ -322,6 +326,7 @@ class TestAuthService:
         from app.services.auth_service import AuthError, login
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
@@ -341,6 +346,7 @@ class TestAuthService:
         mock_user.is_active = False
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_session.execute.return_value = mock_result
@@ -365,6 +371,7 @@ class TestAuthService:
         mock_user.is_active = True
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_session.execute.return_value = mock_result
@@ -389,6 +396,7 @@ class TestAuthService:
         old_refresh = create_refresh_token(user_id)
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_redis = AsyncMock()
         mock_redis.get.return_value = None  # token not in Redis = revoked
 
@@ -404,6 +412,7 @@ class TestAuthService:
         access = create_access_token(user_id)  # wrong type
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_redis = AsyncMock()
 
         with pytest.raises(AuthError) as exc_info:
@@ -425,6 +434,7 @@ class TestAccessCookie:
         body = RegisterRequest(email="zoro@grandline.dev", username="zoro", password="three-swords")
 
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.execute.return_value = MagicMock(
             scalar_one_or_none=MagicMock(return_value=None)
         )
@@ -452,6 +462,7 @@ class TestAccessCookie:
         user.hashed_password = hash_password("three-swords")
         user.is_active = True
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.execute.return_value = MagicMock(
             scalar_one_or_none=MagicMock(return_value=user)
         )
@@ -479,6 +490,7 @@ class TestAccessCookie:
         user.id = user_id
         user.is_active = True
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.execute.return_value = MagicMock(
             scalar_one_or_none=MagicMock(return_value=user)
         )
