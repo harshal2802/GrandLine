@@ -1,0 +1,25 @@
+GrandLine {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}"
+(environment: {{ .Values.global.environment }}).
+
+Components:
+  backend   : {{ if .Values.backend.enabled }}enabled ({{ if .Values.backend.autoscaling.enabled }}HPA {{ .Values.backend.autoscaling.minReplicas }}-{{ .Values.backend.autoscaling.maxReplicas }}{{ else }}{{ .Values.backend.replicas }} replicas{{ end }}){{ else }}disabled{{ end }}
+  frontend  : {{ if .Values.frontend.enabled }}enabled{{ else }}disabled{{ end }}
+  postgres  : {{ if .Values.postgres.enabled }}StatefulSet ({{ .Values.postgres.storage }}){{ else }}disabled{{ end }}
+  redis     : {{ if .Values.redis.enabled }}enabled{{ else }}disabled{{ end }}
+
+{{- if .Values.secrets.create }}
+
+⚠  secrets.create=true — a DEV secret was rendered into the cluster. For
+   staging/prod set secrets.create=false and provision "{{ .Values.secrets.existingSecret }}"
+   out-of-band with: GRANDLINE_DATABASE_URL, GRANDLINE_REDIS_URL,
+   GRANDLINE_JWT_SECRET, POSTGRES_PASSWORD, GRANDLINE_DIAL_ANTHROPIC_API_KEY.
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Reach the Observation Deck at: https://{{ .Values.ingress.host }}/app
+{{- else }}
+
+Ingress disabled — port-forward the frontend:
+  kubectl port-forward svc/{{ include "grandline.fullname" . }}-frontend {{ .Values.frontend.port }}:{{ .Values.frontend.port }}
+{{- end }}

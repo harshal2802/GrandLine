@@ -35,8 +35,11 @@ from app.models.enums import VoyageStatus
 from app.models.user import User
 from app.models.voyage import Voyage
 from app.schemas.pipeline import (
+    InjectContextRequest,
+    InterventionResponse,
     PipelineEventEnvelope,
     PipelineStatusSnapshot,
+    RedirectPhaseRequest,
     StartVoyageRequest,
     StartVoyageResponse,
 )
@@ -244,6 +247,42 @@ async def cancel_voyage(
         task.cancel()
 
     return {"voyage_id": str(voyage_id), "status": voyage.status}
+
+
+@router.post("/inject", response_model=InterventionResponse, status_code=status.HTTP_200_OK)
+async def inject_context(
+    voyage_id: uuid.UUID,
+    body: InjectContextRequest,
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    pipeline_service: PipelineService = Depends(get_pipeline_service),
+) -> InterventionResponse:
+    """Inject user context into a running voyage (Phase 17)."""
+    try:
+        action = await pipeline_service.inject(voyage, body.context, body.phase_number)
+    except PipelineError as exc:
+        raise _pipeline_http_exception(exc) from exc
+    return InterventionResponse(
+        voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status
+    )
+
+
+@router.post("/redirect", response_model=InterventionResponse, status_code=status.HTTP_200_OK)
+async def redirect_phase(
+    voyage_id: uuid.UUID,
+    body: RedirectPhaseRequest,
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    pipeline_service: PipelineService = Depends(get_pipeline_service),
+) -> InterventionResponse:
+    """Redirect a phase's approach (Phase 17)."""
+    try:
+        action = await pipeline_service.redirect(voyage, body.phase_number, body.instruction)
+    except PipelineError as exc:
+        raise _pipeline_http_exception(exc) from exc
+    return InterventionResponse(
+        voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status
+    )
 
 
 @router.get(

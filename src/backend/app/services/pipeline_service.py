@@ -37,6 +37,7 @@ from app.models.deployment import Deployment
 from app.models.dial_config import DialConfig
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
+from app.models.crew_action import CrewAction
 from app.models.poneglyph import Poneglyph
 from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
@@ -289,6 +290,68 @@ class PipelineService:
         await self._session.commit()
         await self._session.refresh(action)
         await publish_crew_action_recorded(self._mushi, voyage.id, action)
+
+    async def inject(
+        self, voyage: Voyage, context: str, phase_number: int | None = None
+    ) -> CrewAction:
+        """Append user-provided context to a running voyage (Phase 17).
+
+        The context is persisted as a durable CrewAction (surfaced in the
+        Ship's Log) and published as an event. Agents read accumulated
+        injected context from the log on their next step. Rejected on a
+        terminal voyage.
+        """
+        if voyage.status in _TERMINAL_STATUSES:
+            raise PipelineError(
+                "VOYAGE_TERMINAL",
+                f"Cannot inject context into a {voyage.status.lower()} voyage",
+            )
+        summary = "Context injected"
+        if phase_number is not None:
+            summary = f"Context injected for phase {phase_number}"
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.CONTEXT_INJECTED,
+            summary,
+            details={"context": context, "phase_number": phase_number},
+        )
+        await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
+        return action
+
+    async def redirect(
+        self, voyage: Voyage, phase_number: int, instruction: str
+    ) -> CrewAction:
+        """Reassign a phase's approach (Phase 17).
+
+        Records the redirect and resets the targeted phase to PENDING so a
+        subsequent resume re-builds it with the new instruction in context.
+        Rejected on a terminal voyage.
+        """
+        if voyage.status in _TERMINAL_STATUSES:
+            raise PipelineError(
+                "VOYAGE_TERMINAL",
+                f"Cannot redirect a {voyage.status.lower()} voyage",
+            )
+        # Reassigning the attribute (rather than mutating in place) marks the
+        # JSONB column dirty for the flush.
+        voyage.phase_status = {**(voyage.phase_status or {}), str(phase_number): "PENDING"}
+        self._session.add(voyage)
+        action = record_action(
+            self._session,
+            voyage.id,
+            CrewRole.CAPTAIN,
+            CrewActionType.PHASE_REDIRECTED,
+            f"Phase {phase_number} redirected",
+            details={"phase_number": phase_number, "instruction": instruction},
+        )
+        await self._session.commit()
+        await self._session.refresh(action)
+        await publish_crew_action_recorded(self._mushi, voyage.id, action)
+        return action
 
     async def get_status(self, voyage: Voyage) -> PipelineStatusSnapshot:
         plan_exists_row = await self._session.execute(

@@ -1,3 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Accessibility: honor reduced-motion (PLAN Phase 7). Pulses/flashes/auto
+   transitions collapse to near-instant so the deck is comfortable for users
+   who opt out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visible keyboard focus on every interactive surface. */
+:focus-visible {
+  outline: 2px solid theme("colors.ocean.300");
+  outline-offset: 2px;
+}

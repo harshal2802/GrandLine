@@ -35,6 +35,34 @@ class StartVoyageRequest(BaseModel):
     max_parallel_shipwrights: int | None = Field(default=None, ge=1, le=10)
 
 
+class InjectContextRequest(BaseModel):
+    """POST /voyages/{id}/inject request body (Phase 17)."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    context: str = Field(min_length=1, max_length=5000)
+    phase_number: int | None = Field(default=None, ge=0)
+
+
+class RedirectPhaseRequest(BaseModel):
+    """POST /voyages/{id}/redirect request body (Phase 17)."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    phase_number: int = Field(ge=0)
+    instruction: str = Field(min_length=1, max_length=5000)
+
+
+class InterventionResponse(BaseModel):
+    """Response envelope for inject/redirect interventions."""
+
+    model_config = ConfigDict(strict=True)
+
+    voyage_id: uuid.UUID
+    crew_action_id: uuid.UUID
+    status: str
+
+
 class StartVoyageResponse(BaseModel):
     """POST /voyages/{id}/start 202 response envelope."""
 

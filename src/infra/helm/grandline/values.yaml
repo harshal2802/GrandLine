@@ -1,0 +1,123 @@
+# Default values for the GrandLine chart. Environment overlays
+# (values-dev/staging/prod.yaml) override these. Secrets are NEVER committed
+# here — they come from an existing K8s Secret (see `secrets.existingSecret`)
+# or, for dev only, from `secrets.create`.
+
+global:
+  imageRegistry: ghcr.io/harshal2802
+  imagePullPolicy: IfNotPresent
+  environment: dev
+
+backend:
+  enabled: true
+  image:
+    repository: grandline-backend
+    tag: latest
+  replicas: 2
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  probes:
+    path: /api/v1/health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  env:
+    GRANDLINE_DEBUG: "false"
+    GRANDLINE_CORS_ORIGINS: '["https://grandline.example.com"]'
+
+frontend:
+  enabled: true
+  image:
+    repository: grandline-frontend
+    tag: latest
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  env:
+    NEXT_PUBLIC_API_BASE_URL: https://grandline.example.com
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  port: 5432
+  database: grandline
+  username: grandline
+  storage: 10Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Agent sandbox pods are created dynamically by the backend at runtime. This
+# block configures the RuntimeClass + namespace the backend launches them into.
+sandbox:
+  enabled: true
+  runtimeClassName: gvisor
+  createRuntimeClass: true
+
+secrets:
+  # When false, the chart expects an existing Secret named `existingSecret`
+  # holding GRANDLINE_DATABASE_URL, GRANDLINE_REDIS_URL, GRANDLINE_JWT_SECRET,
+  # POSTGRES_PASSWORD, and provider API keys. Production MUST set create=false.
+  create: true
+  existingSecret: grandline-secrets
+  # Only used when create=true (dev). Override via --set / sealed secrets.
+  data:
+    POSTGRES_PASSWORD: changeme-dev
+    GRANDLINE_JWT_SECRET: changeme-dev-jwt-secret
+    GRANDLINE_DIAL_ANTHROPIC_API_KEY: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: grandline.example.com
+  tls:
+    enabled: true
+    secretName: grandline-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+networkPolicy:
+  # Deny-by-default with explicit allows (issue #19).
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: ""

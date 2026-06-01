@@ -326,6 +326,49 @@ class TestPauseCancel:
         mock_session.commit.assert_not_awaited()
 
 
+class TestIntervention:
+    @pytest.mark.asyncio
+    async def test_inject_records_action_and_publishes(
+        self, service: PipelineService, mock_session: AsyncMock, mock_mushi: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value)
+        action = await service.inject(voyage, "use redis for the cache", phase_number=2)
+        assert action.action_type == "context_injected"
+        assert action.details["context"] == "use redis for the cache"
+        assert action.details["phase_number"] == 2
+        mock_session.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_inject_rejected_on_terminal_voyage(
+        self, service: PipelineService
+    ) -> None:
+        voyage = _mock_voyage(status=VoyageStatus.COMPLETED.value)
+        with pytest.raises(PipelineError) as exc:
+            await service.inject(voyage, "too late")
+        assert exc.value.code == "VOYAGE_TERMINAL"
+
+    @pytest.mark.asyncio
+    async def test_redirect_resets_phase_to_pending(
+        self, service: PipelineService, mock_session: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(
+            status=VoyageStatus.BUILDING.value, phase_status={"2": "BUILT"}
+        )
+        action = await service.redirect(voyage, 2, "try a different algorithm")
+        assert voyage.phase_status["2"] == "PENDING"
+        assert action.action_type == "phase_redirected"
+        mock_session.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_redirect_rejected_on_terminal_voyage(
+        self, service: PipelineService
+    ) -> None:
+        voyage = _mock_voyage(status=VoyageStatus.CANCELLED.value)
+        with pytest.raises(PipelineError) as exc:
+            await service.redirect(voyage, 1, "nope")
+        assert exc.value.code == "VOYAGE_TERMINAL"
+
+
 class TestGetStatus:
     @pytest.mark.asyncio
     async def test_returns_snapshot_with_counts(
