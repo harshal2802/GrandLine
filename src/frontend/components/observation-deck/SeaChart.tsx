@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVoyages } from "@/hooks/useVoyages";
+import { usePlaybackStore } from "@/stores/playback";
 import type { VoyageListItem, VoyageStatus } from "@/lib/types";
 import { SeaChartCard } from "./SeaChartCard";
 import { EmptyState } from "./EmptyState";
@@ -33,10 +34,17 @@ export function SeaChart() {
   const activeVoyages = active.data?.pages.flatMap((p) => p.items) ?? [];
   const terminalVoyages = terminal.data?.pages.flatMap((p) => p.items) ?? [];
 
+  const openDrawer = usePlaybackStore((s) => s.openDrawer);
+
   const select = (id: string) => {
     const next = new URLSearchParams(params.toString());
     next.set("voyage", id);
     router.push(`/app/sea-chart?${next.toString()}`);
+  };
+
+  const open = (id: string) => {
+    select(id);
+    openDrawer(id);
   };
 
   if (active.isLoading) {
@@ -73,7 +81,7 @@ export function SeaChart() {
               </header>
               <div className="flex flex-col gap-2 p-2">
                 {cards.map((v) => (
-                  <SeaChartCard key={v.id} voyage={v} onSelect={select} onOpen={select} />
+                  <SeaChartCard key={v.id} voyage={v} onSelect={select} onOpen={open} />
                 ))}
               </div>
             </section>
@@ -97,7 +105,7 @@ export function SeaChart() {
           </summary>
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
             {terminalVoyages.map((v) => (
-              <SeaChartCard key={v.id} voyage={v} onSelect={select} onOpen={select} />
+              <SeaChartCard key={v.id} voyage={v} onSelect={select} onOpen={open} />
             ))}
           </div>
           {terminal.hasNextPage && (

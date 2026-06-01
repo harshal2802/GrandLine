@@ -6,8 +6,14 @@ import { useEffect } from "react";
 import { useVoyageStream } from "@/hooks/useVoyageStream";
 import { useVoyageStatus } from "@/hooks/useVoyageStatus";
 import { useVoyageStore } from "@/stores/voyage";
+import { usePlaybackStore } from "@/stores/playback";
+import { useUiStore } from "@/stores/ui";
 import { Sidebar } from "./Sidebar";
 import { ConnectionState } from "./ConnectionState";
+import { PlaybackControls } from "./PlaybackControls";
+import { DetailsDrawer } from "./DetailsDrawer";
+import { CommandPalette } from "./CommandPalette";
+import { HelpDialog } from "./HelpDialog";
 
 const TABS = [
   { href: "/app/sea-chart", label: "Sea Chart" },
@@ -20,13 +26,17 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const voyageId = params.get("voyage");
 
-  // Drive the store's active voyage from the URL (Decision 6).
+  // Drive the store's active voyage from the URL (Decision 6). On voyage switch
+  // discard playback state and return to live (resolved open question).
   useEffect(() => {
     useVoyageStore.getState().selectVoyage(voyageId);
+    usePlaybackStore.getState().resetForVoyage();
+    usePlaybackStore.getState().closeDrawer();
   }, [voyageId]);
 
   useVoyageStatus(voyageId);
   const { reconnect } = useVoyageStream(voyageId);
+  const focusMode = useUiStore((s) => s.focusMode);
 
   return (
     <div className="flex h-screen flex-col bg-ocean-950 text-ocean-100">
@@ -59,9 +69,13 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
         <ConnectionState onReconnect={reconnect} />
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        {!focusMode && <Sidebar />}
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
+      {voyageId && <PlaybackControls />}
+      <DetailsDrawer />
+      <CommandPalette />
+      <HelpDialog />
     </div>
   );
 }
