@@ -339,9 +339,7 @@ class TestIntervention:
         mock_session.commit.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_inject_rejected_on_terminal_voyage(
-        self, service: PipelineService
-    ) -> None:
+    async def test_inject_rejected_on_terminal_voyage(self, service: PipelineService) -> None:
         voyage = _mock_voyage(status=VoyageStatus.COMPLETED.value)
         with pytest.raises(PipelineError) as exc:
             await service.inject(voyage, "too late")
@@ -351,18 +349,14 @@ class TestIntervention:
     async def test_redirect_resets_phase_to_pending(
         self, service: PipelineService, mock_session: AsyncMock
     ) -> None:
-        voyage = _mock_voyage(
-            status=VoyageStatus.BUILDING.value, phase_status={"2": "BUILT"}
-        )
+        voyage = _mock_voyage(status=VoyageStatus.BUILDING.value, phase_status={"2": "BUILT"})
         action = await service.redirect(voyage, 2, "try a different algorithm")
         assert voyage.phase_status["2"] == "PENDING"
         assert action.action_type == "phase_redirected"
         mock_session.commit.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_redirect_rejected_on_terminal_voyage(
-        self, service: PipelineService
-    ) -> None:
+    async def test_redirect_rejected_on_terminal_voyage(self, service: PipelineService) -> None:
         voyage = _mock_voyage(status=VoyageStatus.CANCELLED.value)
         with pytest.raises(PipelineError) as exc:
             await service.redirect(voyage, 1, "nope")

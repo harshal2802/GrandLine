@@ -33,11 +33,11 @@ from app.den_den_mushi.mushi import DenDenMushi
 from app.deployment.backend import DeploymentBackend
 from app.dial_system.router import DialSystemRouter
 from app.models.build_artifact import BuildArtifact
+from app.models.crew_action import CrewAction
 from app.models.deployment import Deployment
 from app.models.dial_config import DialConfig
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.health_check import HealthCheck
-from app.models.crew_action import CrewAction
 from app.models.poneglyph import Poneglyph
 from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
@@ -322,9 +322,7 @@ class PipelineService:
         await publish_crew_action_recorded(self._mushi, voyage.id, action)
         return action
 
-    async def redirect(
-        self, voyage: Voyage, phase_number: int, instruction: str
-    ) -> CrewAction:
+    async def redirect(self, voyage: Voyage, phase_number: int, instruction: str) -> CrewAction:
         """Reassign a phase's approach (Phase 17).
 
         Records the redirect and resets the targeted phase to PENDING so a
