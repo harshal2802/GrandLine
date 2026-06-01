@@ -1,0 +1,119 @@
+// Shared domain types for the Observation Deck. Mirrors the backend schemas
+// (app/schemas/observation_deck.py, app/den_den_mushi/events.py).
+
+export type CrewRole =
+  | "captain"
+  | "navigator"
+  | "doctor"
+  | "shipwright"
+  | "helmsman";
+
+export type VoyageStatus =
+  | "CHARTED"
+  | "PLANNING"
+  | "PDD"
+  | "TDD"
+  | "BUILDING"
+  | "REVIEWING"
+  | "DEPLOYING"
+  | "COMPLETED"
+  | "FAILED"
+  | "PAUSED"
+  | "CANCELLED";
+
+export const TERMINAL_STATUSES: ReadonlySet<VoyageStatus> = new Set<VoyageStatus>([
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+]);
+
+export function isTerminal(status: VoyageStatus | undefined): boolean {
+  return status !== undefined && TERMINAL_STATUSES.has(status);
+}
+
+// Canonical normalized event (CONTRACTS P3). `event_id` is the only dedupe key;
+// display sort is (ts asc, msg_id asc).
+export type EventEnvelope = {
+  event_id: string;
+  msg_id: string;
+  ts: number; // ms since epoch, from backend `timestamp`
+  source_role: CrewRole;
+  type: string; // backend event_type
+  payload: Record<string, unknown>;
+  isReplay: boolean; // P2 — snapshotted at receipt
+};
+
+// Raw WS frame as sent by the backend forwarder.
+export type RawEventFrame = {
+  type: "event";
+  payload: {
+    msg_id: string;
+    event: {
+      event_id: string;
+      event_type: string;
+      voyage_id: string;
+      timestamp: string;
+      source_role: CrewRole;
+      payload: Record<string, unknown>;
+    };
+  };
+};
+
+export type VoyageListItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: VoyageStatus;
+  target_repo: string | null;
+  phase_status: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrewActionRead = {
+  id: string;
+  voyage_id: string;
+  crew_member: string;
+  action_type: string;
+  summary: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type Paginated<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  username: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TokenPair = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+};
+
+export type Transport = "ws" | "sse";
+
+export type ConnectionState =
+  | "idle"
+  | "connecting"
+  | "open"
+  | "reconnecting"
+  | "terminal-idle"
+  | "closed";
+
+export const CREW_ROLES: CrewRole[] = [
+  "captain",
+  "navigator",
+  "doctor",
+  "shipwright",
+  "helmsman",
+];
