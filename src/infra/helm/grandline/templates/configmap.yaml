@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grandline.fullname" . }}-config
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+data:
+  GRANDLINE_DEBUG: {{ .Values.backend.env.GRANDLINE_DEBUG | quote }}
+  GRANDLINE_CORS_ORIGINS: {{ .Values.backend.env.GRANDLINE_CORS_ORIGINS | quote }}
+  GRANDLINE_ENV: {{ .Values.global.environment | quote }}
+  GRANDLINE_SANDBOX_RUNTIME_CLASS: {{ .Values.sandbox.runtimeClassName | quote }}

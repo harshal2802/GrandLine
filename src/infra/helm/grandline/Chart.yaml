@@ -1,0 +1,15 @@
+apiVersion: v2
+name: grandline
+description: |
+  GrandLine multi-agent orchestration platform — FastAPI backend, Next.js
+  frontend, PostgreSQL, and Redis (Den Den Mushi) with gVisor-isolated agent
+  sandbox pods.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: GrandLine crew
+keywords:
+  - grandline
+  - multi-agent
+  - langgraph

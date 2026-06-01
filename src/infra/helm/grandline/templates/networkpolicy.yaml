@@ -1,0 +1,79 @@
+{{- if .Values.networkPolicy.enabled }}
+# Deny-by-default: nothing accepted unless an allow rule below matches (#19).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "grandline.fullname" . }}-default-deny
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Backend: accept from ingress controller + frontend; egress to db + redis + DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "grandline.fullname" . }}-backend
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "grandline.selectorLabels" (dict "ctx" . "component" "backend") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "grandline.selectorLabels" (dict "ctx" . "component" "frontend") | nindent 14 }}
+        - namespaceSelector: {}
+      ports:
+        - port: {{ .Values.backend.port }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "grandline.selectorLabels" (dict "ctx" . "component" "postgres") | nindent 14 }}
+      ports:
+        - port: {{ .Values.postgres.port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "grandline.selectorLabels" (dict "ctx" . "component" "redis") | nindent 14 }}
+      ports:
+        - port: {{ .Values.redis.port }}
+    # DNS + outbound LLM provider calls (egress to internet via cluster).
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+---
+# Postgres + Redis: accept only from the backend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "grandline.fullname" . }}-data
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: ["postgres", "redis"]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "grandline.selectorLabels" (dict "ctx" . "component" "backend") | nindent 14 }}
+{{- end }}

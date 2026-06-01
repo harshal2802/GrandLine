@@ -1,0 +1,37 @@
+# Staging overlay — production-like, smaller ceilings, injected secrets.
+global:
+  environment: staging
+
+backend:
+  replicas: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 4
+  env:
+    GRANDLINE_DEBUG: "false"
+    GRANDLINE_CORS_ORIGINS: '["https://staging.grandline.example.com"]'
+
+frontend:
+  replicas: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 3
+  env:
+    NEXT_PUBLIC_API_BASE_URL: https://staging.grandline.example.com
+
+postgres:
+  storage: 10Gi
+
+secrets:
+  create: false
+  existingSecret: grandline-secrets
+
+ingress:
+  enabled: true
+  host: staging.grandline.example.com
+  tls:
+    enabled: true
+    secretName: grandline-staging-tls
+
+networkPolicy:
+  enabled: true

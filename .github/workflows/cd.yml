@@ -1,0 +1,110 @@
+name: CD
+
+# Build images → push to GHCR → deploy to staging → manual gate → deploy to
+# prod (#19). Triggered on pushes to main and on version tags.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: src/${{ matrix.component }}
+          file: src/${{ matrix.component }}/Dockerfile.prod
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: helm upgrade --install (staging)
+        run: |
+          helm upgrade --install grandline src/infra/helm/grandline \
+            --namespace grandline-staging --create-namespace \
+            -f src/infra/helm/grandline/values-staging.yaml \
+            --set backend.image.tag=sha-${GITHUB_SHA::7} \
+            --set frontend.image.tag=sha-${GITHUB_SHA::7} \
+            --wait --timeout 5m
+
+  deploy-prod:
+    name: Deploy to production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    # The `production` environment requires a manual approval gate configured in
+    # repo settings (required reviewers) — this enforces the manual gate (#19).
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.PROD_KUBECONFIG }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: helm upgrade --install (prod)
+        run: |
+          helm upgrade --install grandline src/infra/helm/grandline \
+            --namespace grandline-prod --create-namespace \
+            -f src/infra/helm/grandline/values-prod.yaml \
+            --set backend.image.tag=sha-${GITHUB_SHA::7} \
+            --set frontend.image.tag=sha-${GITHUB_SHA::7} \
+            --wait --timeout 10m

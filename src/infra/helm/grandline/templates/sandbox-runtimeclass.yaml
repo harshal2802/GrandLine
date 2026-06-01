@@ -1,0 +1,13 @@
+{{- if and .Values.sandbox.enabled .Values.sandbox.createRuntimeClass .Values.sandbox.runtimeClassName }}
+# gVisor RuntimeClass for agent sandbox pods (#19). The backend launches
+# per-execution sandbox pods with runtimeClassName={{ .Values.sandbox.runtimeClassName }}
+# so untrusted generated code runs under gVisor isolation. Requires the gVisor
+# (runsc) runtime installed on the nodes + a matching containerd handler.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.sandbox.runtimeClassName }}
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+handler: {{ .Values.sandbox.runtimeClassName }}
+{{- end }}

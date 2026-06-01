@@ -1,0 +1,40 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "grandline.fullname" . }}
+  labels:
+    {{- include "grandline.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # API + WS + SSE under /api → backend.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "grandline.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          # Everything else → Next.js frontend.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "grandline.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.frontend.port }}
+{{- end }}

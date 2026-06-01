@@ -1,0 +1,36 @@
+# Dev overlay — single replicas, no autoscaling, self-managed secrets, no TLS.
+global:
+  environment: dev
+
+backend:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  env:
+    GRANDLINE_DEBUG: "true"
+    GRANDLINE_CORS_ORIGINS: '["http://localhost:3000"]'
+
+frontend:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  env:
+    NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+
+postgres:
+  storage: 2Gi
+
+secrets:
+  create: true
+
+ingress:
+  enabled: false
+
+networkPolicy:
+  enabled: false
+
+sandbox:
+  # Most dev clusters (kind/minikube) lack gVisor; fall back to the default
+  # runtime so pods still schedule.
+  runtimeClassName: ""
+  createRuntimeClass: false

@@ -1,0 +1,61 @@
+# Production overlay — full replicas + HPA, externally-managed secrets, TLS,
+# deny-by-default network policies.
+global:
+  environment: prod
+  imagePullPolicy: IfNotPresent
+
+backend:
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  env:
+    GRANDLINE_DEBUG: "false"
+    GRANDLINE_CORS_ORIGINS: '["https://grandline.example.com"]'
+
+frontend:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+  env:
+    NEXT_PUBLIC_API_BASE_URL: https://grandline.example.com
+
+postgres:
+  storage: 50Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+secrets:
+  create: false
+  existingSecret: grandline-secrets
+
+ingress:
+  enabled: true
+  host: grandline.example.com
+  tls:
+    enabled: true
+    secretName: grandline-tls
+
+networkPolicy:
+  enabled: true
+
+sandbox:
+  enabled: true
+  runtimeClassName: gvisor
+  createRuntimeClass: true
