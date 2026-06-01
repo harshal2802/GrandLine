@@ -262,9 +262,7 @@ async def inject_context(
         action = await pipeline_service.inject(voyage, body.context, body.phase_number)
     except PipelineError as exc:
         raise _pipeline_http_exception(exc) from exc
-    return InterventionResponse(
-        voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status
-    )
+    return InterventionResponse(voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status)
 
 
 @router.post("/redirect", response_model=InterventionResponse, status_code=status.HTTP_200_OK)
@@ -280,9 +278,7 @@ async def redirect_phase(
         action = await pipeline_service.redirect(voyage, body.phase_number, body.instruction)
     except PipelineError as exc:
         raise _pipeline_http_exception(exc) from exc
-    return InterventionResponse(
-        voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status
-    )
+    return InterventionResponse(voyage_id=voyage_id, crew_action_id=action.id, status=voyage.status)
 
 
 @router.get(
