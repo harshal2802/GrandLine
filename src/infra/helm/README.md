@@ -49,7 +49,15 @@ helm upgrade --install grandline ./grandline \
 `.github/workflows/cd.yml`: build images (`Dockerfile.prod`) → push to GHCR →
 deploy to **staging** automatically → **manual approval gate** (the
 `production` GitHub Environment with required reviewers) → deploy to **prod**.
-Provide `STAGING_KUBECONFIG` / `PROD_KUBECONFIG` (base64) as environment secrets.
+
+**Opt-in.** Every CD job is gated on the `DEPLOY_ENABLED` repository variable so
+merges to `main` never fail before a cluster exists. To activate:
+
+1. Provision a cluster and create the `STAGING_KUBECONFIG` / `PROD_KUBECONFIG`
+   secrets (base64-encoded kubeconfigs).
+2. Set the repository variable `DEPLOY_ENABLED=true`.
+
+Until then the workflow runs but all jobs skip cleanly (green).
 
 ## Notes
 
