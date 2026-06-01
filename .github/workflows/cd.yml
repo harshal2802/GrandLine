@@ -2,6 +2,12 @@ name: CD
 
 # Build images → push to GHCR → deploy to staging → manual gate → deploy to
 # prod (#19). Triggered on pushes to main and on version tags.
+#
+# OPT-IN: every job is gated on the `DEPLOY_ENABLED` repository variable. Until
+# a cluster + secrets are provisioned and DEPLOY_ENABLED is set to "true", all
+# jobs skip cleanly (so merges to main never fail on a missing kubeconfig).
+# To activate: set repo variable DEPLOY_ENABLED=true and provide the
+# STAGING_KUBECONFIG / PROD_KUBECONFIG secrets (base64 kubeconfigs).
 on:
   push:
     branches: [main]
@@ -19,6 +25,7 @@ env:
 jobs:
   build-push:
     name: Build & push images
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -60,6 +67,7 @@ jobs:
   deploy-staging:
     name: Deploy to staging
     needs: build-push
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     steps:
@@ -85,6 +93,7 @@ jobs:
   deploy-prod:
     name: Deploy to production
     needs: deploy-staging
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     # The `production` environment requires a manual approval gate configured in
     # repo settings (required reviewers) — this enforces the manual gate (#19).
