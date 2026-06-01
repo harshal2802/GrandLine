@@ -74,7 +74,13 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
       </header>
       <div className="flex flex-1 overflow-hidden">
         {!focusMode && <Sidebar />}
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-6">
+          <div className="mb-4 rounded-md border border-amber-700/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-200 md:hidden">
+            The Observation Deck is desktop-optimized. Some views (Crew Map,
+            playback) are best on a larger screen.
+          </div>
+          {children}
+        </main>
       </div>
       {voyageId && <PlaybackControls />}
       <DetailsDrawer />
