@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
 
+    # Default provider/model for newly charted voyages (every crew role).
+    # Editable per voyage afterwards via PUT /voyages/{id}/dial-config.
+    dial_default_provider: str = "anthropic"
+    dial_default_model: str = "claude-sonnet-4-20250514"
+
+    # Claude Code CLI provider (provider name: "claude_code").
+    # Auth comes from the CLI itself (claude login / CLAUDE_CODE_OAUTH_TOKEN /
+    # ANTHROPIC_API_KEY in the process environment) — no key stored here.
+    claude_code_cli_path: str = "claude"
+    claude_code_timeout_seconds: int = 300
+    claude_code_max_turns: int = 1
+    claude_code_workspace: str = ""  # cwd for the CLI; empty = system temp dir
+    claude_code_extra_args: str = ""  # extra CLI flags, shlex-split
+
     # Vivre Card (State Checkpointing)
     vivre_card_checkpoint_interval_seconds: int = 300  # 5 minutes
     vivre_card_cleanup_keep_last_n: int = 10

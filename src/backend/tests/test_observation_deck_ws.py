@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from starlette.websockets import WebSocketState
 
-from app.api.v1.observation_deck import voyage_event_stream
+from app.api.v1.observation_deck import _ws_credentials, voyage_event_stream
 from app.den_den_mushi.events import PipelineCompletedEvent, PipelineStartedEvent
 from app.models.enums import CrewRole, VoyageStatus
 from app.models.voyage import Voyage
@@ -46,13 +46,28 @@ def _mock_voyage(status_: str = VoyageStatus.PDD.value) -> Voyage:
     return v
 
 
-def _mock_websocket(initial_state: WebSocketState = WebSocketState.CONNECTING) -> MagicMock:
-    """A WebSocket double that records accept/close/send_json calls."""
+def _mock_websocket(
+    initial_state: WebSocketState = WebSocketState.CONNECTING,
+    *,
+    token: str | None = TOKEN,
+    cookies: dict[str, str] | None = None,
+) -> MagicMock:
+    """A WebSocket double that records accept/close/send_json calls.
+
+    By default the handshake carries the bearer subprotocol
+    (``Sec-WebSocket-Protocol: grandline-bearer, <token>``); pass
+    ``token=None`` for a bare handshake and ``cookies=`` for cookie auth.
+    """
     ws = MagicMock()
     ws.client_state = initial_state
+    ws.headers = (
+        {"sec-websocket-protocol": f"grandline-bearer, {token}"} if token is not None else {}
+    )
+    ws.cookies = cookies or {}
 
-    async def _accept() -> None:
+    async def _accept(subprotocol: str | None = None) -> None:
         ws.client_state = WebSocketState.CONNECTED
+        ws._accepted_subprotocol = subprotocol
 
     async def _close(code: int = 1000, reason: str | None = None) -> None:
         ws.client_state = WebSocketState.DISCONNECTED
@@ -63,6 +78,7 @@ def _mock_websocket(initial_state: WebSocketState = WebSocketState.CONNECTING) -
 
     ws._sent_frames = []
     ws._closed_with = None
+    ws._accepted_subprotocol = None
     ws.accept = AsyncMock(side_effect=_accept)
     ws.close = AsyncMock(side_effect=_close)
     ws.send_json = AsyncMock(side_effect=_send_json)
@@ -143,19 +159,88 @@ def _build_mushi(read_batches: list[list[tuple[str, Any]]]) -> AsyncMock:
 # ---------------------------------------------------------------------------
 
 
+class TestWsCredentials:
+    def test_extracts_token_from_bearer_subprotocol(self) -> None:
+        ws = _mock_websocket(token="jwt-abc")
+        token, accept_protocol = _ws_credentials(ws)
+        assert token == "jwt-abc"
+        assert accept_protocol == "grandline-bearer"
+
+    def test_falls_back_to_cookie(self) -> None:
+        ws = _mock_websocket(token=None, cookies={"access_token": "jwt-cookie"})
+        token, accept_protocol = _ws_credentials(ws)
+        assert token == "jwt-cookie"
+        assert accept_protocol is None
+
+    def test_no_credentials(self) -> None:
+        ws = _mock_websocket(token=None)
+        token, accept_protocol = _ws_credentials(ws)
+        assert token is None
+        assert accept_protocol is None
+
+
 class TestWsAuth:
     @pytest.mark.asyncio
     async def test_invalid_token_closes_with_1008(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # No user returned for token → auth fails.
         _patch_session_factory(monkeypatch, handshake_user=None, handshake_voyage=None)
-        ws = _mock_websocket()
+        ws = _mock_websocket(token="bad-token")
         ws.app.state.den_den_mushi = AsyncMock()
 
-        await voyage_event_stream(ws, VOYAGE_ID, token="bad-token")
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         ws.accept.assert_awaited_once()
         ws.close.assert_awaited_once()
         assert ws._closed_with[0] == _POLICY
+        # The offered bearer subprotocol is echoed even on the failure close
+        # so the browser surfaces our close code instead of failing the
+        # handshake.
+        assert ws._accepted_subprotocol == "grandline-bearer"
+
+    @pytest.mark.asyncio
+    async def test_missing_credentials_close_with_1008(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No subprotocol, no cookie → 1008 without hitting the authenticator.
+        auth = AsyncMock(return_value=_mock_user())
+        monkeypatch.setattr("app.api.v1.observation_deck._authenticate_ws_token", auth)
+        ws = _mock_websocket(token=None)
+        ws.app.state.den_den_mushi = AsyncMock()
+
+        await voyage_event_stream(ws, VOYAGE_ID)
+
+        auth.assert_not_awaited()
+        assert ws._closed_with[0] == _POLICY
+
+    @pytest.mark.asyncio
+    async def test_token_in_query_string_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Regression guard: handshake credentials come from the subprotocol or
+        # cookie only — a ?token= query param must no longer authenticate.
+        auth = AsyncMock(return_value=_mock_user())
+        monkeypatch.setattr("app.api.v1.observation_deck._authenticate_ws_token", auth)
+        ws = _mock_websocket(token=None)
+        ws.query_params = {"token": TOKEN}
+        ws.app.state.den_den_mushi = AsyncMock()
+
+        await voyage_event_stream(ws, VOYAGE_ID)
+
+        auth.assert_not_awaited()
+        assert ws._closed_with[0] == _POLICY
+
+    @pytest.mark.asyncio
+    async def test_cookie_auth_accepts_without_subprotocol(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        terminal = _mock_voyage(status_=VoyageStatus.COMPLETED.value)
+        _patch_session_factory(monkeypatch, handshake_user=_mock_user(), handshake_voyage=terminal)
+        mushi = _build_mushi([[]])
+        ws = _mock_websocket(token=None, cookies={"access_token": TOKEN})
+        ws.app.state.den_den_mushi = mushi
+
+        await voyage_event_stream(ws, VOYAGE_ID)
+
+        assert ws._accepted_subprotocol is None
+        assert ws._closed_with[0] == _TERMINAL_NORMAL
 
     @pytest.mark.asyncio
     async def test_voyage_not_found_closes_with_1003(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,7 +248,7 @@ class TestWsAuth:
         ws = _mock_websocket()
         ws.app.state.den_den_mushi = AsyncMock()
 
-        await voyage_event_stream(ws, VOYAGE_ID, token=TOKEN)
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         ws.close.assert_awaited_once()
         assert ws._closed_with[0] == _UNSUPPORTED
@@ -193,7 +278,7 @@ class TestWsForwarding:
         ws = _mock_websocket()
         ws.app.state.den_den_mushi = mushi
 
-        await voyage_event_stream(ws, VOYAGE_ID, token=TOKEN)
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         # One forwarded event in the canonical envelope shape.
         assert len(ws._sent_frames) == 1
@@ -221,7 +306,7 @@ class TestWsForwarding:
         ws = _mock_websocket()
         ws.app.state.den_den_mushi = mushi
 
-        await voyage_event_stream(ws, VOYAGE_ID, token=TOKEN)
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         assert len(ws._sent_frames) == 1
         assert ws._closed_with[0] == _TERMINAL_NORMAL
@@ -242,7 +327,7 @@ class TestWsForwarding:
         ws = _mock_websocket()
         ws.app.state.den_den_mushi = mushi
 
-        await voyage_event_stream(ws, VOYAGE_ID, token=TOKEN)
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         frame = ws._sent_frames[0]
         # Forward-compatible envelope: {"type": "event", "payload": {...}}
@@ -264,7 +349,7 @@ class TestWsForwarding:
 
         # Should not raise — the unexpected error is logged and the finally
         # block still runs.
-        await voyage_event_stream(ws, VOYAGE_ID, token=TOKEN)
+        await voyage_event_stream(ws, VOYAGE_ID)
 
         mushi._redis.xgroup_destroy.assert_awaited()
 

@@ -12,7 +12,8 @@ Components:
 ⚠  secrets.create=true — a DEV secret was rendered into the cluster. For
    staging/prod set secrets.create=false and provision "{{ .Values.secrets.existingSecret }}"
    out-of-band with: GRANDLINE_DATABASE_URL, GRANDLINE_REDIS_URL,
-   GRANDLINE_JWT_SECRET, POSTGRES_PASSWORD, GRANDLINE_DIAL_ANTHROPIC_API_KEY.
+   GRANDLINE_JWT_SECRET_KEY, POSTGRES_PASSWORD, GRANDLINE_ANTHROPIC_API_KEY,
+   GRANDLINE_OPENAI_API_KEY.
 {{- end }}
 
 {{- if .Values.ingress.enabled }}

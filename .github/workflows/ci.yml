@@ -87,3 +87,25 @@ jobs:
 
       - name: Test (vitest)
         run: npm run test
+
+  helm:
+    name: Helm (lint + template)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: helm lint
+        run: helm lint src/infra/helm/grandline
+
+      # Render every environment overlay so chart/values drift (wrong secret
+      # key names, missing values) fails the PR instead of the deploy.
+      - name: Render environment overlays
+        run: |
+          for overlay in dev staging prod; do
+            echo "── values-${overlay}.yaml ──"
+            helm template grandline src/infra/helm/grandline \
+              -f "src/infra/helm/grandline/values-${overlay}.yaml" > /dev/null
+          done

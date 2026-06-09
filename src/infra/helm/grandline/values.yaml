@@ -94,15 +94,18 @@ sandbox:
 
 secrets:
   # When false, the chart expects an existing Secret named `existingSecret`
-  # holding GRANDLINE_DATABASE_URL, GRANDLINE_REDIS_URL, GRANDLINE_JWT_SECRET,
-  # POSTGRES_PASSWORD, and provider API keys. Production MUST set create=false.
+  # holding GRANDLINE_DATABASE_URL, GRANDLINE_REDIS_URL,
+  # GRANDLINE_JWT_SECRET_KEY, POSTGRES_PASSWORD, and provider API keys.
+  # Production MUST set create=false. Key names must match the backend's
+  # GRANDLINE_-prefixed settings exactly (the Deployment uses envFrom).
   create: true
   existingSecret: grandline-secrets
   # Only used when create=true (dev). Override via --set / sealed secrets.
   data:
     POSTGRES_PASSWORD: changeme-dev
-    GRANDLINE_JWT_SECRET: changeme-dev-jwt-secret
-    GRANDLINE_DIAL_ANTHROPIC_API_KEY: ""
+    GRANDLINE_JWT_SECRET_KEY: changeme-dev-jwt-secret
+    GRANDLINE_ANTHROPIC_API_KEY: ""
+    GRANDLINE_OPENAI_API_KEY: ""
 
 ingress:
   enabled: true

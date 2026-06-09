@@ -24,7 +24,7 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 |---|---|
 | Frontend | Next.js 14+, React, TypeScript, Tailwind CSS, shadcn/ui |
 | Backend | Python, FastAPI, SQLAlchemy |
-| AI/Agents | LangGraph, multi-provider via Dial System |
+| AI/Agents | LangGraph, multi-provider via Dial System (Anthropic API, OpenAI, Ollama, Claude Code CLI) |
 | Message Bus | Redis Streams (Den Den Mushi) |
 | Database | PostgreSQL (Vivre Card state + JSONB) |
 | Deployment | Docker Compose (local-first), Kubernetes + Helm (production) |
@@ -47,6 +47,36 @@ pdd/                — Prompt Driven Development artifacts
   evals/            — Prompt quality evaluations
 docs/               — Documentation (auto-deployed to GitHub Pages)
 ```
+
+## The Dial System (LLM Gateway)
+
+Each crew role dials its own provider/model, with per-role fallback chains. A
+voyage's dial config (`PUT /api/v1/voyages/{id}/dial-config`) maps roles to
+providers:
+
+```json
+{
+  "role_mapping": {
+    "captain":    {"provider": "anthropic",   "model": "claude-sonnet-4-20250514"},
+    "navigator":  {"provider": "claude_code", "model": "sonnet"},
+    "shipwright": {"provider": "openai",      "model": "gpt-4o"},
+    "doctor":     {"provider": "ollama",      "model": "llama3"},
+    "helmsman":   {"provider": "claude_code", "model": "claude-sonnet-4-20250514"}
+  },
+  "fallback_chain": {
+    "captain": ["openai", "ollama"]
+  }
+}
+```
+
+Supported providers:
+
+| Provider | Auth | Notes |
+|---|---|---|
+| `anthropic` | `GRANDLINE_ANTHROPIC_API_KEY` | Anthropic Messages API |
+| `openai` | `GRANDLINE_OPENAI_API_KEY` | OpenAI Chat Completions |
+| `ollama` | none | Local models via `GRANDLINE_OLLAMA_BASE_URL` |
+| `claude_code` | Claude Code CLI login | Runs the local `claude` CLI in print mode — works with a Claude subscription (`claude login` / `CLAUDE_CODE_OAUTH_TOKEN`) or `ANTHROPIC_API_KEY`; no key stored in GrandLine. Install: `npm install -g @anthropic-ai/claude-code`. Tune via `GRANDLINE_CLAUDE_CODE_*` env vars (see `src/backend/.env.example`). |
 
 ## Development
 

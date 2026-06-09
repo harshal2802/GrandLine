@@ -9,6 +9,7 @@ import pytest
 
 from app.core.config import Settings
 from app.dial_system.adapters.anthropic import AnthropicAdapter
+from app.dial_system.adapters.claude_code import ClaudeCodeAdapter
 from app.dial_system.adapters.ollama import OllamaAdapter
 from app.dial_system.adapters.openai import OpenAIAdapter
 from app.dial_system.factory import build_router_from_config, create_adapter
@@ -37,6 +38,14 @@ class TestCreateAdapter:
     def test_creates_ollama_adapter(self) -> None:
         adapter = create_adapter("ollama", "llama3", _make_settings())
         assert isinstance(adapter, OllamaAdapter)
+
+    def test_creates_claude_code_adapter(self) -> None:
+        adapter = create_adapter("claude_code", "sonnet", _make_settings())
+        assert isinstance(adapter, ClaudeCodeAdapter)
+
+    def test_creates_claude_code_adapter_with_dash_alias(self) -> None:
+        adapter = create_adapter("claude-code", "sonnet", _make_settings())
+        assert isinstance(adapter, ClaudeCodeAdapter)
 
     def test_raises_for_unknown_provider(self) -> None:
         with pytest.raises(ValueError, match="Unknown provider"):

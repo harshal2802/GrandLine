@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.den_den_mushi.mushi import DenDenMushi
 from app.dial_system.adapters.anthropic import AnthropicAdapter
 from app.dial_system.adapters.base import ProviderAdapter
+from app.dial_system.adapters.claude_code import ClaudeCodeAdapter
 from app.dial_system.adapters.ollama import OllamaAdapter
 from app.dial_system.adapters.openai import OpenAIAdapter
 from app.dial_system.rate_limiter import RateLimiter
@@ -30,6 +31,15 @@ def create_adapter(provider: str, model: str, settings: Settings) -> ProviderAda
             client=httpx.AsyncClient(),
             model=model,
             base_url=settings.ollama_base_url,
+        )
+    elif provider in ("claude_code", "claude-code"):
+        return ClaudeCodeAdapter(
+            model=model,
+            cli_path=settings.claude_code_cli_path,
+            timeout_seconds=settings.claude_code_timeout_seconds,
+            max_turns=settings.claude_code_max_turns,
+            workspace=settings.claude_code_workspace or None,
+            extra_args=settings.claude_code_extra_args,
         )
     else:
         raise ValueError(f"Unknown provider: {provider!r}")

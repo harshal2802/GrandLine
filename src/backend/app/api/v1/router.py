@@ -13,10 +13,12 @@ from app.api.v1.observation_deck import router as observation_deck_router
 from app.api.v1.pipeline import router as pipeline_router
 from app.api.v1.shipwright import router as shipwright_router
 from app.api.v1.vivre_cards import router as vivre_cards_router
+from app.api.v1.voyages import router as voyages_router
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(health_router, tags=["health"])
 v1_router.include_router(auth_router)
+v1_router.include_router(voyages_router)
 v1_router.include_router(dial_router)
 v1_router.include_router(vivre_cards_router)
 v1_router.include_router(execution_router)
