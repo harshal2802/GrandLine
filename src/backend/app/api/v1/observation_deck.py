@@ -178,9 +178,31 @@ async def list_crew_actions(
 
 # ----------------------- WS: /voyages/{voyage_id}/events --------------------
 
+# Clients authenticate the WS handshake via the subprotocol list:
+#   new WebSocket(url, ["grandline-bearer", <jwt>])
+# The token never appears in the URL (proxy logs, browser history). Same-origin
+# deployments may instead rely on the access_token cookie, which browsers
+# attach to the handshake automatically.
+_WS_BEARER_PROTOCOL = "grandline-bearer"
+
+
+def _ws_credentials(websocket: WebSocket) -> tuple[str | None, str | None]:
+    """Extract ``(token, subprotocol_to_echo)`` from the WS handshake.
+
+    When the client offers the bearer subprotocol we must echo it back on
+    accept() (browsers fail the connection if the server selects none), so the
+    accept subprotocol is returned alongside the token.
+    """
+    header = websocket.headers.get("sec-websocket-protocol", "")
+    offered = [p.strip() for p in header.split(",") if p.strip()]
+    if _WS_BEARER_PROTOCOL in offered:
+        token = next((p for p in offered if p != _WS_BEARER_PROTOCOL), None)
+        return token, _WS_BEARER_PROTOCOL
+    return websocket.cookies.get("access_token"), None
+
 
 async def _authenticate_ws_token(token: str, session: AsyncSession) -> User | None:
-    """Mirror `get_current_user` for the WS query-param path.
+    """Mirror `get_current_user` for the WS handshake path.
 
     Returns the user on success, ``None`` on any auth failure.
     """
@@ -223,9 +245,11 @@ async def _load_authorized_voyage(
 async def voyage_event_stream(
     websocket: WebSocket,
     voyage_id: uuid.UUID,
-    token: str = Query(...),
 ) -> None:
     """Live WS event stream (P1/P4/P10).
+
+    Auth: ``Sec-WebSocket-Protocol: grandline-bearer, <jwt>`` (preferred) or
+    the ``access_token`` cookie. The token is never read from the URL.
 
     Close-code semantics:
       - ``1008`` policy violation → auth failed (missing/invalid/expired token).
@@ -241,21 +265,22 @@ async def voyage_event_stream(
     types (e.g. ``{"type": "intervention", ...}``) later.
     """
     mushi: DenDenMushi = websocket.app.state.den_den_mushi
+    token, accept_protocol = _ws_credentials(websocket)
 
     # Auth + voyage check happen before accept(): on policy/unsupported
     # closes we *don't* upgrade — we close with the appropriate code.
     async with async_session() as session:
-        user = await _authenticate_ws_token(token, session)
+        user = await _authenticate_ws_token(token, session) if token else None
         if user is None:
             # Per RFC 6455 starlette must accept before close-with-code so
             # the close frame actually reaches the client.
-            await websocket.accept()
+            await websocket.accept(subprotocol=accept_protocol)
             await websocket.close(code=_WS_CLOSE_POLICY_VIOLATION)
             return
 
         voyage = await _load_authorized_voyage(session, voyage_id, user)
         if voyage is None:
-            await websocket.accept()
+            await websocket.accept(subprotocol=accept_protocol)
             await websocket.close(code=_WS_CLOSE_UNSUPPORTED_DATA)
             return
 
@@ -263,7 +288,7 @@ async def voyage_event_stream(
         # "already terminal" close.
         initial_terminal = voyage.status in _TERMINAL_STATUSES
 
-    await websocket.accept()
+    await websocket.accept(subprotocol=accept_protocol)
 
     stream = stream_key(voyage_id)
     group = f"sse-{uuid.uuid4().hex}"

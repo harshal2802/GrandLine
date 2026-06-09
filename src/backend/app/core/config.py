@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
 
+    # Default provider/model for newly charted voyages (every crew role).
+    # Editable per voyage afterwards via PUT /voyages/{id}/dial-config.
+    dial_default_provider: str = "anthropic"
+    dial_default_model: str = "claude-sonnet-4-20250514"
+
     # Claude Code CLI provider (provider name: "claude_code").
     # Auth comes from the CLI itself (claude login / CLAUDE_CODE_OAUTH_TOKEN /
     # ANTHROPIC_API_KEY in the process environment) — no key stored here.

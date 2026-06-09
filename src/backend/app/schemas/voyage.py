@@ -2,15 +2,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import VoyageStatus
 
 
 class VoyageCreate(BaseModel):
-    title: str
-    description: str | None = None
-    target_repo: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    target_repo: str | None = Field(default=None, max_length=500)
 
 
 class VoyageRead(BaseModel):

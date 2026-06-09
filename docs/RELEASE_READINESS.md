@@ -7,10 +7,10 @@ Each finding is marked **FIXED** (addressed in this review's PR) or **OPEN**
 ## Verdict
 
 The codebase is in good shape — clean lint, 900+ passing tests, no TODO/stub
-debt, auth enforced on every endpoint, parameterized SQL throughout. The
-items below were the gaps that mattered. After the FIXED items, the remaining
-release blockers are the **OPEN — blocking** ones: ship-stoppers are the
-missing voyage-creation API and the WS token-in-URL exposure.
+debt, auth enforced on every endpoint, parameterized SQL throughout. All
+**blocking** findings from the original review are now FIXED; one operational
+step remains (run the first staging deploy — see `docs/DEPLOYMENT.md`), plus
+the non-blocking hardening list at the bottom.
 
 ---
 
@@ -64,26 +64,34 @@ missing voyage-creation API and the WS token-in-URL exposure.
    `/app` blanked the screen. **FIXED**: `app/app/error.tsx` route-segment
    boundary with a reset action.
 
-## Open — blocking before public release
+## Former blockers — fixed in the follow-up pass
 
-9. **No voyage-creation endpoint.** The API can list voyages, run the
-   pipeline, and stream events — but there is no `POST /voyages` ("chart a
-   course"); voyages only exist via `scripts/seed.py`. The frontend likewise
-   has no creation flow. Users cannot actually start a voyage end-to-end.
+9. **No voyage-creation endpoint.** ~~Voyages only existed via
+   `scripts/seed.py`.~~ **FIXED**: `POST /api/v1/voyages` ("chart a course")
+   creates the voyage plus a default dial config (provider/model from
+   `GRANDLINE_DIAL_DEFAULT_PROVIDER` / `GRANDLINE_DIAL_DEFAULT_MODEL`), and
+   the Observation Deck sidebar grew a "+ Chart" dialog that creates the
+   voyage and optionally sets sail immediately (`POST /voyages/{id}/start`
+   with the mission text as the task). Users can now go register → chart →
+   sail → watch end-to-end.
 
-10. **WS auth token exposed in URL** — `useVoyageStream.ts` connects to
-    `…/events?token=<jwt>`; the backend WS endpoint reads the token from the
-    query string. Tokens in URLs land in proxy/access logs and browser
-    history. Recommended: authenticate the WS handshake via the (already
-    set) cookie or a `Sec-WebSocket-Protocol` subprotocol, then drop the
-    query param and make the auth cookie HttpOnly (removing finding #4's
-    trade-off entirely).
+10. **WS auth token exposed in URL.** ~~`…/events?token=<jwt>` landed in
+    proxy logs and browser history.~~ **FIXED**: the WS handshake now
+    authenticates via `Sec-WebSocket-Protocol: grandline-bearer, <jwt>`
+    (echoed by the server on accept) with the `access_token` cookie as the
+    same-origin fallback; the `?token=` query param is removed and ignored.
+    Follow-up (non-blocking): moving the cookie to HttpOnly still requires
+    reworking session restore, since the in-memory auth store re-hydrates
+    from that cookie after a page reload.
 
-11. **Production deploy pipeline never exercised** — CD is gated behind
-    `DEPLOY_ENABLED` (off by default) and the chart's prod overlay
-    (`grandline.example.com`, cert-manager issuer) is placeholder. Do one
-    full staging deploy (images → Helm → ingress/TLS → smoke test) before
-    calling the chart release-ready.
+11. **Production deploy pipeline never exercised.** **MOSTLY FIXED**: CI now
+    runs `helm lint` + renders every overlay on each PR (catches chart/values
+    drift like the secret-key mismatch class), CD's new `deploy-gate` job
+    reports loudly when `DEPLOY_ENABLED` is off instead of skipping silently,
+    and `docs/DEPLOYMENT.md` is the first-deploy runbook (secret provisioning
+    with exact key names, domains, GitHub environments, smoke tests,
+    rollback). **Remaining manual step**: provision a staging cluster and run
+    the pipeline once before the public release.
 
 ## Open — recommended hardening (non-blocking)
 
@@ -101,9 +109,8 @@ missing voyage-creation API and the WS token-in-URL exposure.
     limits in some paths; `imagePullPolicy: IfNotPresent` with `latest` tags
     can serve stale images — prefer digest/SHA tags (CD already passes
     `--set image.tag=<sha>`).
-17. **`DEPLOY_ENABLED` skip is silent** — when unset, CD jobs skip without
-    explanation; emit a notice in the workflow so operators know deploys are
-    disabled.
+17. ~~**`DEPLOY_ENABLED` skip is silent**~~ — **FIXED**: the `deploy-gate`
+    job posts the gating state to the workflow run summary.
 
 ---
 

@@ -23,6 +23,26 @@ env:
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
 
 jobs:
+  deploy-gate:
+    # Always runs so the workflow shows WHY everything else skipped when
+    # DEPLOY_ENABLED is unset (finding: silent skips confuse operators).
+    name: Deploy gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report deploy gating
+        run: |
+          if [ "${{ vars.DEPLOY_ENABLED }}" = "true" ]; then
+            echo "DEPLOY_ENABLED=true — build & deploy jobs will run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Deploys are disabled"
+              echo ""
+              echo "The \`DEPLOY_ENABLED\` repository variable is not \`true\`, so all build/deploy jobs were skipped."
+              echo "To enable: set the repo variable \`DEPLOY_ENABLED=true\` and provide the \`STAGING_KUBECONFIG\` / \`PROD_KUBECONFIG\` secrets."
+              echo "First-deploy runbook: docs/DEPLOYMENT.md"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build-push:
     name: Build & push images
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}

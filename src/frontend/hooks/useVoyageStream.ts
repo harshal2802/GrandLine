@@ -146,7 +146,12 @@ export function useVoyageStream(voyageId: string | null): StreamControls {
       store.getState().setConnectionState("connecting");
       store.getState().beginConnection(id);
 
-      const ws = new WebSocket(`${WS_V1}/voyages/${id}/events?token=${encodeURIComponent(token)}`);
+      // Token rides in the subprotocol list, never the URL (proxy logs /
+      // browser history). The backend echoes "grandline-bearer" on accept.
+      const ws = new WebSocket(`${WS_V1}/voyages/${id}/events`, [
+        "grandline-bearer",
+        token,
+      ]);
       wsRef.current = ws;
       let opened = false;
 
