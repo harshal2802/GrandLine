@@ -102,6 +102,7 @@ migrate-status: ## Show current alembic revision
 api-dev: ## Run FastAPI locally with uvicorn --reload (requires `make up`)
 	@$(DOCKER_HOST_EXPORT); \
 	cd $(BACKEND) && source venv/bin/activate && \
+		GRANDLINE_DEBUG=true \
 		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
 		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
 		uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -148,6 +149,7 @@ setup: venv up migrate ## One-shot: venv + infra + migrations
 api-mocked: ## Run FastAPI with PipelineService.start mocked (for smoke test)
 	@$(DOCKER_HOST_EXPORT); \
 	cd $(BACKEND) && source venv/bin/activate && \
+		GRANDLINE_DEBUG=true \
 		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
 		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
 		PYTHONPATH=. python3 -m scripts.dev_api_mocked

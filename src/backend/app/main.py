@@ -21,9 +21,36 @@ logger = logging.getLogger(__name__)
 
 _PIPELINE_SHUTDOWN_TIMEOUT_S = 5.0
 
+# Methods/headers the API actually uses; anything else is rejected by CORS
+# preflight instead of being blanket-allowed.
+_CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+_CORS_ALLOW_HEADERS = ["Authorization", "Content-Type"]
+
+_DEFAULT_JWT_SECRET = "change-me-in-production"
+
+
+def validate_production_settings() -> None:
+    """Refuse to boot with insecure defaults outside debug mode.
+
+    Dev flows (docker-compose, `make api-dev`) set GRANDLINE_DEBUG=true and
+    are unaffected. Production (debug=false) must configure a real secret.
+    """
+    if settings.debug:
+        return
+    if settings.jwt_secret_key == _DEFAULT_JWT_SECRET:
+        raise RuntimeError(
+            "GRANDLINE_JWT_SECRET_KEY is still the insecure default "
+            f"({_DEFAULT_JWT_SECRET!r}). Set a strong secret, or set "
+            "GRANDLINE_DEBUG=true for local development."
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Runs at serve time (uvicorn), not at import time, so tests can import
+    # the app object without production-grade settings.
+    validate_production_settings()
+
     pool = ConnectionPool.from_url(settings.redis_url, decode_responses=True)
     app.state.redis_pool = pool
     app.state.den_den_mushi = DenDenMushi(Redis(connection_pool=pool))
@@ -79,8 +106,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=_CORS_ALLOW_METHODS,
+        allow_headers=_CORS_ALLOW_HEADERS,
     )
     app.add_middleware(DefaultDenyMiddleware)
 

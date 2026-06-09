@@ -10,6 +10,10 @@ services:
       - GRANDLINE_REDIS_URL=redis://redis:6379/0
       - GRANDLINE_CORS_ORIGINS=["http://localhost:3000"]
       - GRANDLINE_DEBUG=true
+      # Dial System provider credentials — set in .env (see .env.example).
+      - GRANDLINE_ANTHROPIC_API_KEY=${GRANDLINE_ANTHROPIC_API_KEY:-}
+      - GRANDLINE_OPENAI_API_KEY=${GRANDLINE_OPENAI_API_KEY:-}
+      - GRANDLINE_OLLAMA_BASE_URL=${GRANDLINE_OLLAMA_BASE_URL:-http://localhost:11434}
     depends_on:
       db:
         condition: service_healthy
@@ -26,7 +30,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
     depends_on:
       - api
     volumes:

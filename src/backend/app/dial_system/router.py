@@ -46,6 +46,8 @@ class DialSystemRouter:
     def _get_provider_name(self, adapter: ProviderAdapter) -> str:
         """Extract provider name from adapter class."""
         cls_name = type(adapter).__name__.lower()
+        if "claudecode" in cls_name:
+            return "claude_code"
         if "anthropic" in cls_name:
             return "anthropic"
         if "openai" in cls_name:

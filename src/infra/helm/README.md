@@ -33,9 +33,11 @@ external-secrets, or CI) with:
 
 - `GRANDLINE_DATABASE_URL`
 - `GRANDLINE_REDIS_URL`
-- `GRANDLINE_JWT_SECRET`
+- `GRANDLINE_JWT_SECRET_KEY`
 - `POSTGRES_PASSWORD`
-- `GRANDLINE_DIAL_ANTHROPIC_API_KEY` (and any other provider keys)
+- `GRANDLINE_ANTHROPIC_API_KEY` / `GRANDLINE_OPENAI_API_KEY` (and any other
+  provider keys — names must match the backend's `GRANDLINE_`-prefixed
+  settings exactly, since the Deployment consumes the Secret via `envFrom`)
 
 ```bash
 helm upgrade --install grandline ./grandline \

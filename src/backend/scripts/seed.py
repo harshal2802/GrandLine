@@ -115,7 +115,11 @@ async def seed() -> None:
         ]
         session.add_all(actions)
 
-        # Create dial config (LLM gateway configuration)
+        # Create dial config (LLM gateway configuration).
+        # Providers: "anthropic", "openai", "ollama", or "claude_code" (runs
+        # the local Claude Code CLI, e.g. on a Claude subscription).
+        # fallback_chain maps role -> ordered list of fallback provider names,
+        # matching what dial_system.factory.build_router_from_config expects.
         dial_config = DialConfig(
             id=uuid.uuid4(),
             voyage_id=voyage_id,
@@ -127,8 +131,11 @@ async def seed() -> None:
                 "helmsman": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
             },
             fallback_chain={
-                "order": ["anthropic", "openai"],
-                "openai": {"model": "gpt-4o"},
+                "captain": ["openai"],
+                "navigator": ["openai"],
+                "shipwright": ["openai"],
+                "doctor": ["openai"],
+                "helmsman": ["openai"],
             },
         )
         session.add(dial_config)
