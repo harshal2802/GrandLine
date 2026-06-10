@@ -3,106 +3,602 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GrandLine Documentation</title>
-  <style>
-    :root {
-      --ocean-50: #f0f9ff;
-      --ocean-100: #e0f2fe;
-      --ocean-300: #7dd3fc;
-      --ocean-400: #38bdf8;
-      --ocean-700: #0369a1;
-      --ocean-800: #075985;
-      --ocean-900: #0c4a6e;
-      --ocean-950: #082f49;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--ocean-950);
-      color: var(--ocean-100);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 4rem 1rem;
-    }
-    h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-    .subtitle { color: var(--ocean-300); font-size: 1.1rem; margin-bottom: 3rem; }
-    .sections {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
-      max-width: 800px;
-      width: 100%;
-    }
-    .card {
-      background: var(--ocean-900);
-      border: 1px solid var(--ocean-700);
-      border-radius: 8px;
-      padding: 1.5rem;
-    }
-    .card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--ocean-50); }
-    .card p { color: var(--ocean-300); font-size: 0.9rem; line-height: 1.5; }
-    .badge {
-      display: inline-block;
-      background: var(--ocean-800);
-      color: var(--ocean-300);
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      margin-top: 0.75rem;
-    }
-    footer {
-      margin-top: 4rem;
-      color: var(--ocean-700);
-      font-size: 0.85rem;
-    }
-  </style>
+  <title>GrandLine — Assemble your crew. Navigate the GrandLine.</title>
+  <meta name="description" content="GrandLine is a multi-agent orchestration platform where a crew of persona-based AI agents — Captain, Navigator, Doctor, Shipwrights, Helmsman — voyage through a disciplined PDD → TDD → Build → Review → Deploy pipeline. Interactive product mockup.">
+  <meta property="og:title" content="GrandLine — Multi-Agent Orchestration Platform">
+  <meta property="og:description" content="Watch an AI crew plan, test, build, validate and deploy software — live on the Observation Deck. Interactive mockup with simulated data.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://harshal2802.github.io/GrandLine/">
+  <link rel="canonical" href="https://harshal2802.github.io/GrandLine/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>">
+  <link rel="stylesheet" href="./assets/styles.css">
 </head>
 <body>
-  <h1>GrandLine</h1>
-  <p class="subtitle">Multi-Agent Orchestration Platform Documentation</p>
 
-  <div class="sections">
-    <div class="card">
-      <h2>The Crew</h2>
-      <p>Captain (PM), Navigator (Architect), Shipwrights (Devs), Doctor (QA), Helmsman (DevOps) — persona-based AI agents that voyage together.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= NAV ================= -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top"><span class="anchor">⚓</span> GrandLine</a>
+      <span class="mock-tag">Interactive mockup</span>
+      <div class="nav-links">
+        <a href="#crew">The Crew</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#deck">Observation Deck</a>
+        <a href="#dial">Dial System</a>
+        <a href="#platform">Platform</a>
+        <a href="#api">API</a>
+        <a href="https://github.com/harshal2802/GrandLine" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-cta" href="#deck">Launch the demo</a>
+      </div>
     </div>
+  </nav>
 
-    <div class="card">
-      <h2>Observation Deck</h2>
-      <p>Real-time war room UI with Sea Chart (board), Crew Map (DAG), and Ship's Log (timeline) views.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= HERO ================= -->
+  <header class="hero" id="top">
+    <div class="container">
+      <h1>Assemble your crew.<br><span class="accent">Navigate the GrandLine.</span></h1>
+      <p class="sub">A multi-agent orchestration platform where persona-based AI agents voyage through a disciplined
+        pipeline to build, test, and deploy software — observable end-to-end, interruptible at any moment.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#deck">▶ Watch a voyage run</a>
+        <a class="btn btn-ghost" href="https://github.com/harshal2802/GrandLine" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <div class="hero-badges">
+        <span class="pill">PDD → TDD → Build → Review → Deploy</span>
+        <span class="pill">5 persona agents</span>
+        <span class="pill">Provider-agnostic LLM gateway</span>
+        <span class="pill">Real git branches per agent</span>
+        <span class="pill">Sandboxed execution</span>
+        <span class="pill">No work lost — Vivre Cards</span>
+      </div>
     </div>
+    <svg class="hero-waves" viewBox="0 0 1440 110" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,60 C240,110 480,10 720,55 C960,100 1200,20 1440,60 L1440,110 L0,110 Z" fill="rgba(14,165,233,0.10)"/>
+      <path d="M0,80 C260,30 520,105 780,70 C1040,35 1240,95 1440,75 L1440,110 L0,110 Z" fill="rgba(2,132,199,0.14)"/>
+    </svg>
+  </header>
 
-    <div class="card">
-      <h2>Dial System</h2>
-      <p>Provider-agnostic LLM gateway with config-driven role mapping and automatic failover via Vivre Card checkpoints.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= CREW ================= -->
+  <section id="crew">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">The Crew</div>
+        <h2>Five specialists. Zero god agents.</h2>
+        <p>Each crew member has one job in the voyage pipeline — and every action they take is logged,
+          checkpointed, and observable. No freestyle.</p>
+      </div>
+      <div class="crew-grid">
+        <div class="card crew-card">
+          <div class="crew-emoji">⚓</div>
+          <h3>Captain</h3>
+          <div class="crew-role">Project Manager</div>
+          <p>Decomposes your mission into a voyage plan — ordered phases with dependencies, crew assignments, and artifacts. Validates the dependency graph (cycle detection included).</p>
+          <div class="crew-meta"><span class="chip">voyage_plan_created</span></div>
+        </div>
+        <div class="card crew-card">
+          <div class="crew-emoji">🧭</div>
+          <h3>Navigator</h3>
+          <div class="crew-role">Architect</div>
+          <p>Drafts the Poneglyphs — encoded PDD prompt artifacts with constraints, file paths, and test criteria that guide every downstream step.</p>
+          <div class="crew-meta"><span class="chip">poneglyph_drafted</span></div>
+        </div>
+        <div class="card crew-card">
+          <div class="crew-emoji">🩺</div>
+          <h3>Doctor</h3>
+          <div class="crew-role">QA Engineer</div>
+          <p>Writes failing health checks <em>before</em> any code exists (TDD), then re-validates the whole build in a clean sandbox afterwards.</p>
+          <div class="crew-meta"><span class="chip">health_check_written</span> <span class="chip">validation_passed</span></div>
+        </div>
+        <div class="card crew-card">
+          <div class="crew-emoji">🔨</div>
+          <h3>Shipwrights</h3>
+          <div class="crew-role">Developers</div>
+          <p>Build the code, following Poneglyphs precisely. Iterate against the Doctor's tests until green — in parallel across independent phases, each on its own git branch.</p>
+          <div class="crew-meta"><span class="chip">code_generated</span> <span class="chip">tests_passed</span></div>
+        </div>
+        <div class="card crew-card">
+          <div class="crew-emoji">⚙️</div>
+          <h3>Helmsman</h3>
+          <div class="crew-role">DevOps Engineer</div>
+          <p>Deploys across three tiers — auto preview, semi-auto staging, approval-gated production — with rollback per tier and root-cause diagnosis on failure.</p>
+          <div class="crew-meta"><span class="chip">deployment_completed</span></div>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <div class="card">
-      <h2>API Reference</h2>
-      <p>REST + SSE + WebSocket API documentation. Auto-generated from FastAPI OpenAPI spec.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= PIPELINE ================= -->
+  <section id="pipeline">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">The Voyage Pipeline</div>
+        <h2>One state machine. No shortcuts.</h2>
+        <p>Every voyage moves through enforced stage transitions with guards — you can't enter BUILDING until the Doctor's tests exist.</p>
+      </div>
+      <div class="pipeline-flow" id="pipeline-flow">
+        <div class="stage"><span class="glyph st-CHARTED">○</span><span class="name">CHARTED</span><span class="who">you</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-PLANNING">◔</span><span class="name">PLANNING</span><span class="who">⚓ Captain</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-PDD">◑</span><span class="name">PDD</span><span class="who">🧭 Navigator</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-TDD">◑</span><span class="name">TDD</span><span class="who">🩺 Doctor</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-BUILDING">◕</span><span class="name">BUILDING</span><span class="who">🔨 Shipwrights</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-REVIEWING">◕</span><span class="name">REVIEWING</span><span class="who">🩺 Doctor</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-DEPLOYING">◕</span><span class="name">DEPLOYING</span><span class="who">⚙️ Helmsman</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="stage"><span class="glyph st-COMPLETED">●</span><span class="name">COMPLETED</span><span class="who">🏴‍☠️</span></div>
+      </div>
+      <div class="side-states">
+        <span class="badge st-PAUSED"><span class="g">❚❚</span>PAUSED — resumable from any stage</span>
+        <span class="badge st-FAILED"><span class="g">✕</span>FAILED — Vivre Card preserved</span>
+        <span class="badge st-CANCELLED"><span class="g">⊘</span>CANCELLED — graceful shutdown</span>
+      </div>
+      <p class="pipeline-quote">“PDD and TDD aren't optional — they're the Log Pose. Without them, the crew doesn't sail.”</p>
     </div>
+  </section>
 
-    <div class="card">
-      <h2>Deployment</h2>
-      <p>Docker Compose (local-first) and Kubernetes + Helm (production) deployment guides.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= OBSERVATION DECK (interactive demo) ================= -->
+  <section id="deck">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">The Observation Deck</div>
+        <h2>Your real-time war room</h2>
+        <p>Watch the voyage unfold across three live views — then step in like a fleet admiral.
+          This demo runs a scripted voyage entirely in your browser.</p>
+      </div>
+
+      <div class="deck-mobile-note">⚓ The Observation Deck is desktop-optimized — rotate or widen your screen for the full war room.</div>
+
+      <div class="deck-frame">
+        <!-- top bar -->
+        <div class="deck-topbar">
+          <span class="deck-title">⚓ Observation Deck</span>
+          <div class="deck-tabs" role="tablist">
+            <button class="deck-tab active" data-view="sea">Sea Chart</button>
+            <button class="deck-tab" data-view="map">Crew Map</button>
+            <button class="deck-tab" data-view="log">Ship's Log</button>
+          </div>
+          <div class="deck-top-right">
+            <span class="conn live" id="conn-chip"><span class="dot"></span><span id="conn-label">Idle</span><span class="transport" id="conn-transport">· ws</span></span>
+            <button class="iv-btn" id="palette-open" title="Command palette">⌘K</button>
+            <button class="iv-btn" id="speed-btn" title="Demo speed">1×</button>
+            <button class="iv-btn primary" id="sail-btn">⛵ Set Sail</button>
+          </div>
+        </div>
+
+        <div class="deck-body" id="deck-body">
+          <!-- sidebar -->
+          <aside class="deck-sidebar">
+            <h4>Voyages <button class="chart-btn" id="chart-open">+ Chart</button></h4>
+            <div id="voyage-list"></div>
+            <button class="show-more">Show more voyages…</button>
+          </aside>
+
+          <!-- main -->
+          <div class="deck-main">
+            <!-- Sea Chart -->
+            <div class="deck-view active" id="view-sea">
+              <div class="sea-columns">
+                <div class="sea-col" id="col-planning"><h5>Planning <span class="count">0</span></h5><div class="cards"></div></div>
+                <div class="sea-col" id="col-pdd"><h5>PDD <span class="count">0</span></h5><div class="cards"></div></div>
+                <div class="sea-col" id="col-tdd"><h5>TDD <span class="count">0</span></h5><div class="cards"></div></div>
+                <div class="sea-col" id="col-building"><h5>Building <span class="count">0</span></h5><div class="cards"></div></div>
+                <div class="sea-col" id="col-reviewing"><h5>Reviewing <span class="count">0</span></h5><div class="cards"></div></div>
+                <div class="sea-col" id="col-deploying"><h5>Deploying <span class="count">0</span></h5><div class="cards"></div></div>
+              </div>
+              <details class="terminal-strip" open>
+                <summary>Completed &amp; Failed (<span id="terminal-count">0</span>)</summary>
+                <div class="terminal-cards" id="terminal-cards"></div>
+              </details>
+            </div>
+
+            <!-- Crew Map -->
+            <div class="deck-view" id="view-map">
+              <div class="crewmap-wrap">
+                <svg class="crewmap" viewBox="0 0 900 240" aria-label="Live DAG of crew agents communicating via Den Den Mushi">
+                  <!-- edges -->
+                  <path class="cm-edge" data-edge="captain-navigator"   d="M 90 110 Q 180 84 270 110"/>
+                  <path class="cm-edge" data-edge="navigator-doctor"    d="M 270 110 Q 360 84 450 110"/>
+                  <path class="cm-edge" data-edge="doctor-shipwright"   d="M 450 110 Q 540 84 630 110"/>
+                  <path class="cm-edge" data-edge="shipwright-helmsman" d="M 630 110 Q 720 84 810 110"/>
+                  <path class="cm-edge" data-edge="helmsman-captain"    d="M 810 110 Q 450 225 90 110"/>
+                  <circle id="cm-dot" class="cm-dot" r="5" cx="90" cy="110" opacity="0"/>
+                  <!-- activity label -->
+                  <text id="cm-activity" class="cm-activity" x="90" y="52" text-anchor="middle" opacity="0"></text>
+                  <!-- nodes -->
+                  <g class="cm-node" data-role="captain">
+                    <circle cx="90" cy="110" r="34"/>
+                    <text class="emoji" x="90" y="118" text-anchor="middle">⚓</text>
+                    <text class="label" x="90" y="166" text-anchor="middle">captain</text>
+                    <circle class="cm-count-bg" data-role="captain" cx="116" cy="86" r="11" opacity="0"/>
+                    <text class="cm-count" data-role="captain" x="116" y="90" text-anchor="middle" opacity="0">0</text>
+                  </g>
+                  <g class="cm-node" data-role="navigator">
+                    <circle cx="270" cy="110" r="34"/>
+                    <text class="emoji" x="270" y="118" text-anchor="middle">🧭</text>
+                    <text class="label" x="270" y="166" text-anchor="middle">navigator</text>
+                    <circle class="cm-count-bg" data-role="navigator" cx="296" cy="86" r="11" opacity="0"/>
+                    <text class="cm-count" data-role="navigator" x="296" y="90" text-anchor="middle" opacity="0">0</text>
+                  </g>
+                  <g class="cm-node" data-role="doctor">
+                    <circle cx="450" cy="110" r="34"/>
+                    <text class="emoji" x="450" y="118" text-anchor="middle">🩺</text>
+                    <text class="label" x="450" y="166" text-anchor="middle">doctor</text>
+                    <circle class="cm-count-bg" data-role="doctor" cx="476" cy="86" r="11" opacity="0"/>
+                    <text class="cm-count" data-role="doctor" x="476" y="90" text-anchor="middle" opacity="0">0</text>
+                  </g>
+                  <g class="cm-node" data-role="shipwright">
+                    <circle cx="630" cy="110" r="34"/>
+                    <text class="emoji" x="630" y="118" text-anchor="middle">🔨</text>
+                    <text class="label" x="630" y="166" text-anchor="middle">shipwright</text>
+                    <circle class="cm-count-bg" data-role="shipwright" cx="656" cy="86" r="11" opacity="0"/>
+                    <text class="cm-count" data-role="shipwright" x="656" y="90" text-anchor="middle" opacity="0">0</text>
+                  </g>
+                  <g class="cm-node" data-role="helmsman">
+                    <circle cx="810" cy="110" r="34"/>
+                    <text class="emoji" x="810" y="118" text-anchor="middle">⚙️</text>
+                    <text class="label" x="810" y="166" text-anchor="middle">helmsman</text>
+                    <circle class="cm-count-bg" data-role="helmsman" cx="836" cy="86" r="11" opacity="0"/>
+                    <text class="cm-count" data-role="helmsman" x="836" y="90" text-anchor="middle" opacity="0">0</text>
+                  </g>
+                </svg>
+                <div class="cm-legend">
+                  <span>⚓ captain <b id="count-captain">0</b></span>
+                  <span>🧭 navigator <b id="count-navigator">0</b></span>
+                  <span>🩺 doctor <b id="count-doctor">0</b></span>
+                  <span>🔨 shipwright <b id="count-shipwright">0</b></span>
+                  <span>⚙️ helmsman <b id="count-helmsman">0</b></span>
+                  <span style="margin-left:auto">events on <code>grandline:events:vg-7f3a2c91</code>: <b id="cm-total">0</b></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ship's Log -->
+            <div class="deck-view" id="view-log">
+              <div class="log-toolbar">
+                <input class="log-search" id="log-search" type="text" placeholder="Search the log…  ( / )">
+                <button class="filter-chip" data-role="captain">⚓ captain</button>
+                <button class="filter-chip" data-role="navigator">🧭 navigator</button>
+                <button class="filter-chip" data-role="doctor">🩺 doctor</button>
+                <button class="filter-chip" data-role="shipwright">🔨 shipwright</button>
+                <button class="filter-chip" data-role="helmsman">⚙️ helmsman</button>
+                <button class="filter-chip" id="fail-only">✕ failures only</button>
+                <button class="filter-chip" id="clear-filters">clear</button>
+              </div>
+              <div class="log-rows" id="log-rows"></div>
+            </div>
+          </div>
+
+          <!-- details drawer -->
+          <aside class="drawer" id="drawer" aria-label="Voyage details">
+            <div class="drawer-head">
+              <b id="drawer-title">Voyage</b>
+              <button class="iv-btn" id="drawer-close">✕</button>
+            </div>
+            <div class="drawer-tabs">
+              <button class="drawer-tab active" data-pane="overview">Overview</button>
+              <button class="drawer-tab" data-pane="events">Events</button>
+              <button class="drawer-tab" data-pane="timestamps">Timestamps</button>
+            </div>
+            <div class="drawer-pane" id="pane-overview">
+              <dl class="kv">
+                <dt>Status</dt><dd id="d-status"></dd>
+                <dt>Active crew</dt><dd id="d-crew" class="mono"></dd>
+                <dt>Completed phases</dt><dd id="d-phases-done" class="mono"></dd>
+              </dl>
+              <table class="kv-table"><tbody id="d-phase-table"></tbody></table>
+              <div class="failure-box" id="d-failure" style="display:none"></div>
+            </div>
+            <div class="drawer-pane" id="pane-events" style="display:none">
+              <div class="dial-events" id="d-events"></div>
+            </div>
+            <div class="drawer-pane" id="pane-timestamps" style="display:none">
+              <dl class="kv">
+                <dt>First event</dt><dd id="d-first" class="mono"></dd>
+                <dt>Last activity</dt><dd id="d-last" class="mono"></dd>
+                <dt>Events buffered</dt><dd id="d-buffered" class="mono"></dd>
+              </dl>
+            </div>
+          </aside>
+        </div>
+
+        <!-- footer: interventions + playback -->
+        <div class="deck-footer">
+          <button class="iv-btn" id="iv-pause">❚❚ Pause</button>
+          <button class="iv-btn" id="iv-resume" style="display:none">▶ Resume</button>
+          <button class="iv-btn" id="iv-inject">✎ Inject context</button>
+          <button class="iv-btn danger" id="iv-cancel">✕ Cancel</button>
+          <div class="playback">
+            <span class="pt" id="pt-start">—</span>
+            <input type="range" id="scrubber" min="0" max="100" value="100" disabled aria-label="Playback scrubber">
+            <span class="pt" id="pt-end">live</span>
+            <button class="iv-btn" id="return-live" style="display:none">▶ Return to live</button>
+          </div>
+        </div>
+      </div>
+      <p class="deck-note">Interactive mockup — every event is simulated in your browser using the platform's real
+        <code>event_type</code> strings, voyage statuses, and intervention semantics. No backend, no API keys.</p>
+
+      <!-- three views explained -->
+      <div class="arch-grid" style="margin-top:2rem">
+        <div class="card arch-card">
+          <h3>🗺️ Sea Chart <span class="chip">board</span></h3>
+          <p>Voyages flow left-to-right through pipeline columns. Cards show live status, per-phase build state, and progress. Terminal voyages collapse into Completed &amp; Failed.</p>
+        </div>
+        <div class="card arch-card">
+          <h3>🕸️ Crew Map <span class="chip">graph</span></h3>
+          <p>A live DAG of the crew. Nodes pulse while an agent works; edges flash as Den Den Mushi messages travel between agents; badges count recent events.</p>
+        </div>
+        <div class="card arch-card">
+          <h3>📜 Ship's Log <span class="chip">timeline</span></h3>
+          <p>The durable record of every crew action — searchable, filterable by crew member, failures-only mode, with cursor pagination over <code>(created_at, id)</code>.</p>
+        </div>
+        <div class="card arch-card">
+          <h3>🎛️ Fleet admiral controls <span class="chip">interventions</span></h3>
+          <p>Pause, resume, inject context, redirect a phase, or cancel — every intervention triggers a Vivre Card checkpoint so no work is ever lost. Try the buttons during the demo.</p>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <div class="card">
-      <h2>PDD Guide</h2>
-      <p>How GrandLine uses Prompt Driven Development and Test Driven Development — the Log Pose.</p>
-      <span class="badge">Coming soon</span>
+  <!-- ================= DIAL SYSTEM ================= -->
+  <section id="dial">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">The Dial System</div>
+        <h2>Every role dials its own model</h2>
+        <p>A provider-agnostic LLM gateway: per-role provider/model mapping, sliding-window rate limiting,
+          and automatic failover chains — with a Vivre Card checkpoint before every switch.</p>
+      </div>
+      <div class="dial-grid">
+        <div class="card">
+          <table class="dial-table">
+            <thead><tr><th>Crew role</th><th>Active provider · model</th><th>Fallback chain</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>⚓ captain</td>
+                <td data-active-provider><span class="provider-chip"><span class="pd"></span>anthropic</span> <span class="mono" style="color:var(--ocean-500)">claude-sonnet-4</span></td>
+                <td><span class="provider-chip" data-p="anthropic"><span class="pd"></span>anthropic</span><span class="fallback-arrow">→</span><span class="provider-chip"><span class="pd"></span>openai</span><span class="fallback-arrow">→</span><span class="provider-chip"><span class="pd"></span>ollama</span></td>
+              </tr>
+              <tr>
+                <td>🧭 navigator</td>
+                <td><span class="provider-chip"><span class="pd"></span>claude_code</span> <span class="mono" style="color:var(--ocean-500)">sonnet</span></td>
+                <td><span class="provider-chip" data-p="anthropic"><span class="pd"></span>anthropic</span></td>
+              </tr>
+              <tr>
+                <td>🩺 doctor</td>
+                <td><span class="provider-chip"><span class="pd"></span>ollama</span> <span class="mono" style="color:var(--ocean-500)">llama3</span></td>
+                <td><span class="mono" style="color:var(--ocean-600)">none</span></td>
+              </tr>
+              <tr>
+                <td>🔨 shipwright</td>
+                <td><span class="provider-chip"><span class="pd"></span>openai</span> <span class="mono" style="color:var(--ocean-500)">gpt-4o</span></td>
+                <td><span class="provider-chip"><span class="pd"></span>ollama</span></td>
+              </tr>
+              <tr>
+                <td>⚙️ helmsman</td>
+                <td><span class="provider-chip"><span class="pd"></span>claude_code</span> <span class="mono" style="color:var(--ocean-500)">claude-sonnet-4</span></td>
+                <td><span class="provider-chip" data-p="anthropic"><span class="pd"></span>anthropic</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size:0.76rem;color:var(--ocean-400);margin-top:0.8rem">
+            Configured per-voyage via <code>PUT /api/v1/voyages/{id}/dial-config</code> — JSONB role mapping, no restart needed.
+            Providers: <code>anthropic</code>, <code>openai</code>, <code>ollama</code>, <code>claude_code</code> (runs your local Claude Code CLI — subscription auth, no key stored).
+          </p>
+        </div>
+        <div class="card">
+          <h3 style="color:#fff;font-size:1rem;margin-bottom:0.6rem">Failover, live</h3>
+          <p style="font-size:0.82rem;color:var(--ocean-300);margin-bottom:0.8rem">
+            Rate limiter trips (100k tokens / 100 req per 60s window) → Vivre Card checkpoint → switch to the
+            next provider in the chain → <code>provider_switched</code> event on the Den Den Mushi.
+          </p>
+          <button class="btn btn-primary" id="dial-sim" style="margin-bottom:0.9rem">⚡ Simulate anthropic rate-limit</button>
+          <div class="dial-events" id="dial-events">
+            <div class="dial-event">dial system idle · all providers healthy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PLATFORM INTERNALS ================= -->
+  <section id="platform">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">Below Deck</div>
+        <h2>The machinery of the voyage</h2>
+        <p>Everything an agent does is evented, checkpointed, sandboxed, and committed to real git history.</p>
+      </div>
+      <div class="arch-grid">
+        <div class="card arch-card">
+          <h3>🐌 Den Den Mushi <span class="chip">Redis Streams</span></h3>
+          <p>Typed inter-agent events with consumer groups, dead-letter stream, and replay-from-offset. Per-voyage stream <code>grandline:events:{voyage_id}</code>.</p>
+          <div class="chips"><span class="chip">voyage_plan_created</span><span class="chip">tests_passed</span><span class="chip">provider_switched</span><span class="chip">+17 more</span></div>
+        </div>
+        <div class="card arch-card">
+          <h3>🃏 Vivre Cards <span class="chip">PostgreSQL JSONB</span></h3>
+          <p>Agent state snapshots at every stage, iteration, pause, and failover. Restore, diff two checkpoints, or clean up old ones — resumable voyages, no work lost.</p>
+          <div class="chips"><span class="chip">checkpoint</span><span class="chip">restore</span><span class="chip">diff</span><span class="chip">cleanup</span></div>
+        </div>
+        <div class="card arch-card">
+          <h3>📦 Execution Service <span class="chip">gVisor sandbox</span></h3>
+          <p>All agent code runs in isolated containers — per-user sandboxes, resource limits, path-traversal guards, auto-recreate on death. Never on the host.</p>
+          <div class="chips"><span class="chip">ExecutionBackend ABC</span><span class="chip">swappable</span></div>
+        </div>
+        <div class="card arch-card">
+          <h3>🌿 Git Integration <span class="chip">real repos</span></h3>
+          <p>Each agent works on its own branch — <code>agent/{crew}/{voyage}</code> — with commits, pushes, PR creation, and conflict detection. Host allowlist prevents token exfiltration.</p>
+          <div class="chips"><span class="chip">clone</span><span class="chip">branch</span><span class="chip">commit</span><span class="chip">pr</span><span class="chip">conflicts</span></div>
+        </div>
+        <div class="card arch-card">
+          <h3>🔐 Auth <span class="chip">default-deny</span></h3>
+          <p>JWT with refresh rotation; every route closed unless explicitly allowed. WebSocket auth rides the <code>grandline-bearer</code> subprotocol — no tokens in URLs.</p>
+          <div class="chips"><span class="chip">register</span><span class="chip">login</span><span class="chip">refresh</span><span class="chip">me</span></div>
+        </div>
+        <div class="card arch-card">
+          <h3>🧰 Stack <span class="chip">local-first</span></h3>
+          <p>Next.js 14 + Tailwind · FastAPI + SQLAlchemy · LangGraph · PostgreSQL · Redis Streams · Docker Compose locally, Kubernetes + Helm in production.</p>
+          <div class="chips"><span class="chip">REST</span><span class="chip">SSE</span><span class="chip">WebSocket</span></div>
+        </div>
+      </div>
+
+      <div class="tiers">
+        <div class="card tier">
+          <h4>🛶 Preview</h4>
+          <div class="trig">Auto-deploy on branch push. Containerized preview per voyage.</div>
+          <div class="gate">approval: none</div>
+        </div>
+        <div class="card tier">
+          <h4>⛵ Staging</h4>
+          <div class="trig">Deploys on PR merge with lightweight validation. Rollback = redeploy previous.</div>
+          <div class="gate">approval: lightweight review</div>
+        </div>
+        <div class="card tier">
+          <h4>🚢 Production</h4>
+          <div class="trig">PR to main only. The Helmsman refuses to sail without an explicit approver.</div>
+          <div class="gate">approval: fleet admiral required</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= API ================= -->
+  <section id="api">
+    <div class="container">
+      <div class="section-head">
+        <div class="kicker">API Surface</div>
+        <h2>REST + SSE + WebSocket, versioned at <code>/api/v1</code></h2>
+        <p>OpenAPI auto-generated by FastAPI. A condensed map of the surface:</p>
+      </div>
+      <div class="api-cols">
+        <div class="card">
+          <table class="api-table">
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages</td><td class="d">chart a course</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/start</td><td class="d">set sail (202)</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/pause · /resume · /cancel</td><td class="d">fleet admiral controls</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/inject · /redirect</td><td class="d">mid-voyage interventions</td></tr>
+            <tr><td class="m m-GET">GET</td><td class="p">/voyages/{id}/status</td><td class="d">pipeline snapshot</td></tr>
+            <tr><td class="m m-SSE">SSE</td><td class="p">/voyages/{id}/stream</td><td class="d">live pipeline events</td></tr>
+            <tr><td class="m m-WS">WS</td><td class="p">/voyages/{id}/events</td><td class="d">Observation Deck stream</td></tr>
+            <tr><td class="m m-GET">GET</td><td class="p">/voyages/{id}/crew-actions</td><td class="d">Ship's Log, cursor paged</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/plan</td><td class="d">⚓ Captain decomposes</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/poneglyphs</td><td class="d">🧭 Navigator drafts PDD</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/health-checks</td><td class="d">🩺 Doctor writes TDD</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/phases/{n}/build</td><td class="d">🔨 Shipwright iterates</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/validation</td><td class="d">🩺 Doctor validates</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/deploy · /rollback</td><td class="d">⚙️ Helmsman, 3 tiers</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <table class="api-table">
+            <tr><td class="m m-GET">GET</td><td class="p">/voyages/{id}/dial-config</td><td class="d">role→provider map</td></tr>
+            <tr><td class="m m-PUT">PUT</td><td class="p">/voyages/{id}/dial-config</td><td class="d">hot-swap models</td></tr>
+            <tr><td class="m m-SSE">SSE</td><td class="p">/voyages/{id}/completions/stream</td><td class="d">token streaming</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/vivre-cards</td><td class="d">checkpoint state</td></tr>
+            <tr><td class="m m-GET">GET</td><td class="p">/voyages/{id}/vivre-cards/{c}/diff</td><td class="d">compare checkpoints</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/vivre-cards/{c}/restore</td><td class="d">resume from snapshot</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/execute</td><td class="d">sandboxed run</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/voyages/{id}/git/clone · /commit · /pr</td><td class="d">agent git ops</td></tr>
+            <tr><td class="m m-POST">POST</td><td class="p">/auth/register · /login · /refresh</td><td class="d">JWT pair</td></tr>
+            <tr><td class="m m-GET">GET</td><td class="p">/auth/me</td><td class="d">fleet admiral profile</td></tr>
+            <tr><td class="m m-GET">GET</td><td class="p">/health</td><td class="d">service heartbeat</td></tr>
+          </table>
+          <p style="font-size:0.76rem;color:var(--ocean-400);margin-top:0.8rem">
+            Full reference: run the stack and open <code>/docs</code> (Swagger UI) — see the
+            <a href="https://github.com/harshal2802/GrandLine/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener">deployment runbook</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer>
+    <div class="container">
+      <div class="tag">Assemble your crew. Navigate the GrandLine. 🏴‍☠️</div>
+      <div class="links">
+        <a href="https://github.com/harshal2802/GrandLine" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/harshal2802/GrandLine#readme" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/harshal2802/GrandLine/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener">Deployment runbook</a>
+        <a href="https://github.com/harshal2802/GrandLine/blob/main/docs/RELEASE_READINESS.md" target="_blank" rel="noopener">Release readiness</a>
+      </div>
+      <div class="fine">Interactive product mockup — all voyages, events, and providers on this page are simulated in your browser.<br>© 2026 GrandLine · MIT License</div>
+    </div>
+  </footer>
+
+  <!-- ================= MODALS ================= -->
+  <div class="modal-backdrop" id="chart-modal">
+    <div class="modal">
+      <h3>Chart a course</h3>
+      <p>Give the crew a mission. The Captain will decompose it into a voyage plan.</p>
+      <input type="text" id="chart-title" placeholder="Voyage title (max 255 chars)" maxlength="255">
+      <textarea id="chart-task" rows="4" placeholder="Mission for the crew — e.g. “Build a REST endpoint that aggregates fleet telemetry and exposes p95 latency per vessel.” (min 10 chars to set sail)"></textarea>
+      <label><input type="checkbox" id="chart-sail" checked> Set sail immediately (<code>POST /voyages/{id}/start</code>)</label>
+      <div class="row">
+        <button class="iv-btn" id="chart-cancel">Cancel</button>
+        <button class="iv-btn primary" id="chart-create">⚓ Chart &amp; set sail</button>
+      </div>
     </div>
   </div>
 
-  <footer>
-    Assemble your crew. Navigate the GrandLine.
-  </footer>
+  <div class="modal-backdrop" id="inject-modal">
+    <div class="modal">
+      <h3>Inject context</h3>
+      <p>Add instructions to the running agent's context window — delivered mid-voyage via <code>POST /voyages/{id}/inject</code>, logged to the Ship's Log.</p>
+      <textarea id="inject-text" rows="4" placeholder="e.g. “Prefer cursor pagination over offset for the telemetry list endpoint.” (min 10 chars)"></textarea>
+      <div class="row">
+        <button class="iv-btn" id="inject-cancel">Cancel</button>
+        <button class="iv-btn primary" id="inject-send">✎ Inject</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="cancel-modal">
+    <div class="modal">
+      <h3>Cancel voyage?</h3>
+      <p>The crew stops gracefully and the voyage moves to <span class="badge st-CANCELLED"><span class="g">⊘</span>CANCELLED</span>.
+        A final Vivre Card preserves all state — cancelled voyages are not resumable.</p>
+      <div class="row">
+        <button class="iv-btn" id="cancel-keep">Keep sailing</button>
+        <button class="iv-btn danger" id="cancel-confirm">✕ Cancel voyage</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="help-modal">
+    <div class="modal">
+      <h3>Keyboard shortcuts</h3>
+      <table class="kv-table shortcuts">
+        <tr><td><span class="kbd">⌘/Ctrl K</span></td><td>Command palette</td></tr>
+        <tr><td><span class="kbd">g</span> <span class="kbd">s</span></td><td>Go to Sea Chart</td></tr>
+        <tr><td><span class="kbd">g</span> <span class="kbd">c</span></td><td>Go to Crew Map</td></tr>
+        <tr><td><span class="kbd">g</span> <span class="kbd">l</span></td><td>Go to Ship's Log</td></tr>
+        <tr><td><span class="kbd">/</span></td><td>Focus log search</td></tr>
+        <tr><td><span class="kbd">f</span></td><td>Toggle focus mode</td></tr>
+        <tr><td><span class="kbd">?</span></td><td>Show this help</td></tr>
+        <tr><td><span class="kbd">Esc</span></td><td>Close overlays</td></tr>
+      </table>
+      <div class="row" style="margin-top:0.9rem">
+        <button class="iv-btn" id="help-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- command palette -->
+  <div class="palette" id="palette">
+    <div class="palette-box">
+      <input type="text" id="palette-input" placeholder="Type a command…">
+      <div class="palette-list" id="palette-list"></div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toasts"></div>
+
+  <script src="./assets/deck.js" defer></script>
 </body>
 </html>
