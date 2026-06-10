@@ -160,3 +160,19 @@ smoke: ## Run the Phase 15.4 manual-test smoke script (requires infra + api-mock
 		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
 		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
 		PYTHONPATH=. python3 -m scripts.smoke_pipeline_api
+
+.PHONY: demo
+demo: podman-start ## Seed + replay the scripted demo voyage (no API key needed)
+	@$(DOCKER_HOST_EXPORT); \
+	cd $(BACKEND) && source venv/bin/activate && \
+		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
+		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
+		PYTHONPATH=. python3 -m scripts.demo
+
+.PHONY: demo-clean
+demo-clean: ## Remove all seeded demo data (voyage, user, event stream)
+	@$(DOCKER_HOST_EXPORT); \
+	cd $(BACKEND) && source venv/bin/activate && \
+		GRANDLINE_DATABASE_URL=postgresql+psycopg://grandline:grandline@localhost:5432/grandline \
+		GRANDLINE_REDIS_URL=redis://localhost:6379/0 \
+		PYTHONPATH=. python3 -m scripts.demo --cleanup

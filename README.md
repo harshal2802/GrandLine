@@ -86,6 +86,20 @@ Supported providers:
 | `ollama` | none | Local models via `GRANDLINE_OLLAMA_BASE_URL` |
 | `claude_code` | Claude Code CLI login | Runs the local `claude` CLI in print mode — works with a Claude subscription (`claude login` / `CLAUDE_CODE_OAUTH_TOKEN`) or `ANTHROPIC_API_KEY`; no key stored in GrandLine. Install: `npm install -g @anthropic-ai/claude-code`. Tune via `GRANDLINE_CLAUDE_CODE_*` env vars (see `src/backend/.env.example`). |
 
+## Try it without API keys (demo mode)
+
+Want to watch the crew sail before wiring up a provider? After `make setup`:
+
+```bash
+make demo        # seeds a demo voyage and replays a recorded run (~50s)
+```
+
+It prints a login (`demo@grandline.io` / `demo-voyage`) and a deck URL. Open it
+to watch the Sea Chart, Crew Map, and Ship's Log animate through a real voyage —
+Pause/Cancel work against the replay. `make demo-clean` removes the seeded data.
+The replay runs entirely through the real Den Den Mushi stream; no LLM provider
+is called.
+
 ## Development
 
 This project follows **PDD** (Prompt Driven Development) and **TDD** (Test Driven Development) — the Log Pose.
