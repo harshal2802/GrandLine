@@ -327,7 +327,11 @@ class PipelineService:
 
         Records the redirect and resets the targeted phase to PENDING so a
         subsequent resume re-builds it with the new instruction in context.
-        Rejected on a terminal voyage.
+        While the phase is actively building, the Shipwright drains the redirect
+        on its next iteration (intervention_service). A redirect landing in the
+        narrow window after the build's final iteration but before it commits
+        BUILT is honored only on the next resume (the PENDING reset is the
+        durable signal). Rejected on a terminal voyage.
         """
         if voyage.status in _TERMINAL_STATUSES:
             raise PipelineError(

@@ -170,7 +170,7 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
           <label className="mb-1 block text-xs text-ocean-400">Phase number</label>
           <input
             type="number"
-            min={0}
+            min={1}
             value={redirectPhaseNum}
             onChange={(e) => setRedirectPhaseNum(e.target.value)}
             className="mb-3 w-28 rounded border border-ocean-700 bg-ocean-950 px-2 py-1 text-sm text-ocean-100 outline-none focus:border-ocean-400"
@@ -195,8 +195,8 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
               disabled={
                 !redirectText.trim() ||
                 redirectPhaseNum.trim() === "" ||
-                Number.isNaN(Number(redirectPhaseNum)) ||
-                Number(redirectPhaseNum) < 0
+                !Number.isInteger(Number(redirectPhaseNum)) ||
+                Number(redirectPhaseNum) < 1
               }
               onClick={() => {
                 const phase = Number(redirectPhaseNum);
