@@ -34,12 +34,14 @@ from app.models import get_db
 from app.models.enums import VoyageStatus
 from app.models.user import User
 from app.models.voyage import Voyage
+from app.schemas.deployment import DeploymentTier
 from app.schemas.pipeline import (
     InjectContextRequest,
     InterventionResponse,
     PipelineEventEnvelope,
     PipelineStatusSnapshot,
     RedirectPhaseRequest,
+    ResumeVoyageRequest,
     StartVoyageRequest,
     StartVoyageResponse,
 )
@@ -88,8 +90,12 @@ def _spawn_pipeline_task(
     request: Request,
     voyage: Voyage,
     user: User,
-    body: StartVoyageRequest,
     pipeline_service: PipelineService,
+    *,
+    task: str,
+    deploy_tier: DeploymentTier,
+    max_parallel_shipwrights: int | None,
+    approved_by: uuid.UUID | None,
 ) -> StartVoyageResponse:
     """Register a background pipeline task in `app.state.pipeline_tasks`.
 
@@ -100,22 +106,22 @@ def _spawn_pipeline_task(
     registry: dict[uuid.UUID, asyncio.Task[None]] = request.app.state.pipeline_tasks
     voyage_id = voyage.id
 
-    task = asyncio.create_task(
+    pipeline_task = asyncio.create_task(
         pipeline_service.start(
             voyage,
             user.id,
-            body.task,
-            body.deploy_tier,
-            body.max_parallel_shipwrights,
-            approved_by=body.approved_by,
+            task,
+            deploy_tier,
+            max_parallel_shipwrights,
+            approved_by=approved_by,
         )
     )
-    registry[voyage_id] = task
+    registry[voyage_id] = pipeline_task
 
     def _cleanup(_t: asyncio.Task[None]) -> None:
         registry.pop(voyage_id, None)
 
-    task.add_done_callback(_cleanup)
+    pipeline_task.add_done_callback(_cleanup)
 
     return StartVoyageResponse(voyage_id=voyage_id, status=voyage.status)
 
@@ -161,7 +167,16 @@ async def start_voyage(
             )
         )
 
-    return _spawn_pipeline_task(request, voyage, user, body, pipeline_service)
+    return _spawn_pipeline_task(
+        request,
+        voyage,
+        user,
+        pipeline_service,
+        task=body.task,
+        deploy_tier=body.deploy_tier,
+        max_parallel_shipwrights=body.max_parallel_shipwrights,
+        approved_by=body.approved_by,
+    )
 
 
 @router.post(
@@ -171,7 +186,7 @@ async def start_voyage(
 )
 async def resume_voyage(
     voyage_id: uuid.UUID,
-    body: StartVoyageRequest,
+    body: ResumeVoyageRequest,
     request: Request,
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
@@ -194,10 +209,11 @@ async def resume_voyage(
     | COMPLETED / CANCELLED                                   | reject            | 409  |
     | (running task already in registry)                      | reject            | 409  |
 
-    The request body is `StartVoyageRequest` (same shape as `/start`). The
-    `task` field is required by validation but is unused on resume because
-    the Captain stage is skip-already-satisfied (the plan already exists).
-    Callers may supply a placeholder string of >= 10 chars.
+    The request body is optional (`ResumeVoyageRequest`). Resume reuses the
+    voyage's stored mission (`description`); planning is skip-already-satisfied,
+    so no fresh task is needed. Pass a `task` only to update the mission for this
+    run. Rejected with `VOYAGE_NO_TASK` (422) when no task is given and the
+    voyage has no stored mission.
     """
     if _already_running(request, voyage_id):
         raise _pipeline_http_exception(
@@ -207,12 +223,32 @@ async def resume_voyage(
             )
         )
 
+    # Reuse the stored mission when no task is supplied. Resolve before flipping
+    # status so a task-less voyage with no stored mission is rejected cleanly.
+    effective_task = body.task or voyage.description
+    if not effective_task:
+        raise _pipeline_http_exception(
+            PipelineError(
+                "VOYAGE_NO_TASK",
+                "Voyage has no stored mission to resume; provide a task",
+            )
+        )
+
     try:
         await pipeline_service.resume(voyage)
     except PipelineError as exc:
         raise _pipeline_http_exception(exc) from exc
 
-    return _spawn_pipeline_task(request, voyage, user, body, pipeline_service)
+    return _spawn_pipeline_task(
+        request,
+        voyage,
+        user,
+        pipeline_service,
+        task=effective_task,
+        deploy_tier=body.deploy_tier,
+        max_parallel_shipwrights=body.max_parallel_shipwrights,
+        approved_by=body.approved_by,
+    )
 
 
 @router.post("/pause", status_code=status.HTTP_200_OK)

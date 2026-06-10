@@ -8,12 +8,12 @@ export function pauseVoyage(id: string) {
 }
 
 export function resumeVoyage(id: string) {
-  // `task` is required by validation but unused on resume (the plan already
-  // exists); a >=10-char placeholder satisfies the schema.
+  // Empty body: the server reuses the voyage's stored mission and skips
+  // already-satisfied stages. No fabricated task or tier needed.
   return apiFetch(`/voyages/${id}/resume`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task: "resume-voyage", deploy_tier: "preview" }),
+    body: JSON.stringify({}),
   });
 }
 
