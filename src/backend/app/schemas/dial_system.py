@@ -42,3 +42,22 @@ class RateLimitStatus(BaseModel):
     remaining_tokens: int | None = None
     remaining_requests: int | None = None
     reset_at: datetime | None = None
+
+
+class ProviderWindowUsage(BaseModel):
+    """Per-provider sliding-window usage for the current voyage's dial config."""
+
+    provider: str
+    is_limited: bool
+    remaining_requests: int | None
+    remaining_tokens: int | None
+    max_requests: int
+    max_tokens: int
+
+
+class DialStatusResponse(BaseModel):
+    """Read-only headroom snapshot surfaced by GET /voyages/{id}/dial-status."""
+
+    voyage_id: uuid.UUID
+    window_seconds: int
+    providers: list[ProviderWindowUsage]

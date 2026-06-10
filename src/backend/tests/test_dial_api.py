@@ -101,3 +101,83 @@ class TestUpdateDialConfig:
             await update_dial_config(VOYAGE_ID, update, session, user)
 
         assert exc_info.value.status_code == 404
+
+
+class TestProvidersInConfig:
+    def test_collects_mapping_and_fallback_providers(self) -> None:
+        from app.api.v1.dial import _providers_in_config
+
+        providers = _providers_in_config(
+            {"captain": {"provider": "anthropic", "model": "x"}},
+            {"captain": ["openai", {"provider": "ollama", "model": "llama3"}]},
+        )
+        assert providers == ["anthropic", "ollama", "openai"]  # sorted, deduped
+
+    def test_handles_none(self) -> None:
+        from app.api.v1.dial import _providers_in_config
+
+        assert _providers_in_config(None, None) == []
+
+
+class TestGetDialStatus:
+    @staticmethod
+    def _redis(requests: int = 0, entries: list[tuple[str, float]] | None = None) -> AsyncMock:
+        redis = AsyncMock()
+        redis.zrangebyscore = AsyncMock(return_value=entries or [])
+        redis.zcount = AsyncMock(return_value=requests)
+        return redis
+
+    @pytest.mark.asyncio
+    async def test_returns_usage_for_each_provider(self) -> None:
+        from app.api.v1.dial import get_dial_status
+
+        config = DialConfig(
+            id=CONFIG_ID,
+            voyage_id=VOYAGE_ID,
+            role_mapping=ROLE_MAPPING,
+            fallback_chain=FALLBACK_CHAIN,
+        )
+        session = _mock_session_with_config(config)
+
+        result = await get_dial_status(VOYAGE_ID, session, self._redis(), MagicMock())
+
+        assert result.window_seconds == 60
+        names = {p.provider for p in result.providers}
+        assert names == {"anthropic", "openai", "ollama"}
+        for p in result.providers:
+            assert p.is_limited is False
+            assert p.remaining_requests == 100
+            assert p.remaining_tokens == 100_000
+            assert p.max_requests == 100
+            assert p.max_tokens == 100_000
+
+    @pytest.mark.asyncio
+    async def test_reflects_consumed_window(self) -> None:
+        from app.api.v1.dial import get_dial_status
+
+        config = DialConfig(
+            id=CONFIG_ID,
+            voyage_id=VOYAGE_ID,
+            role_mapping={"captain": {"provider": "anthropic", "model": "x"}},
+            fallback_chain=None,
+        )
+        session = _mock_session_with_config(config)
+        # 3 requests, 1500 tokens consumed this window.
+        redis = self._redis(requests=3, entries=[("1.0:1000", 1.0), ("2.0:500", 2.0)])
+
+        result = await get_dial_status(VOYAGE_ID, session, redis, MagicMock())
+
+        anthropic = next(p for p in result.providers if p.provider == "anthropic")
+        assert anthropic.remaining_requests == 97
+        assert anthropic.remaining_tokens == 98_500
+
+    @pytest.mark.asyncio
+    async def test_404_when_no_config(self) -> None:
+        from app.api.v1.dial import get_dial_status
+
+        session = _mock_session_with_config(None)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_dial_status(VOYAGE_ID, session, self._redis(), MagicMock())
+
+        assert exc_info.value.status_code == 404

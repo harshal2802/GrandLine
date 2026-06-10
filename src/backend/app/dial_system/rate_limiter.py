@@ -21,6 +21,14 @@ class RateLimiter:
         self._max_tokens = max_tokens_per_minute
         self._max_requests = max_requests_per_minute
 
+    @property
+    def max_tokens(self) -> int:
+        return self._max_tokens
+
+    @property
+    def max_requests(self) -> int:
+        return self._max_requests
+
     def _key(self, provider: str) -> str:
         return f"{KEY_PREFIX}:{provider}"
 

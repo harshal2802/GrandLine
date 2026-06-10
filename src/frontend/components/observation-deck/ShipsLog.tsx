@@ -122,6 +122,7 @@ export function ShipsLog() {
           <ul className="divide-y divide-ocean-800/60">
             {filtered.slice(0, MAX_RENDER).map((row) => {
               const failure = /fail/i.test(row.actionType);
+              const switched = row.actionType === "provider_switched";
               const highlighted =
                 (hoveredPhase !== null && row.phaseNumber === hoveredPhase) ||
                 (hoveredCrew !== null && row.crewMember === hoveredCrew);
@@ -139,13 +140,22 @@ export function ShipsLog() {
                   </span>
                   <span
                     className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                      failure ? "bg-rose-500/20 text-rose-300" : "bg-ocean-800 text-ocean-300"
+                      failure
+                        ? "bg-rose-500/20 text-rose-300"
+                        : switched
+                          ? "bg-amber-500/20 text-amber-300"
+                          : "bg-ocean-800 text-ocean-300"
                     }`}
                   >
                     {row.crewMember}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-ocean-100">{row.summary}</p>
+                    <p
+                      className={`truncate ${switched ? "text-amber-200" : "text-ocean-100"}`}
+                    >
+                      {switched && "⚡ "}
+                      {row.summary}
+                    </p>
                     <p className="text-[11px] text-ocean-500">
                       {row.actionType}
                       {row.phaseNumber !== null && ` · phase ${row.phaseNumber}`}

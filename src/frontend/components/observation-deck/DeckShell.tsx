@@ -15,6 +15,8 @@ import { DetailsDrawer } from "./DetailsDrawer";
 import { CommandPalette } from "./CommandPalette";
 import { HelpDialog } from "./HelpDialog";
 import { InterventionControls } from "./InterventionControls";
+import { Toaster } from "./Toaster";
+import { useFailoverToasts } from "@/hooks/useFailoverToasts";
 
 const TABS = [
   { href: "/app/sea-chart", label: "Sea Chart" },
@@ -38,6 +40,7 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
   useVoyageStatus(voyageId);
   const { reconnect } = useVoyageStream(voyageId);
   const focusMode = useUiStore((s) => s.focusMode);
+  useFailoverToasts();
 
   return (
     <div className="flex h-screen flex-col bg-ocean-950 text-ocean-100">
@@ -86,6 +89,7 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
       <DetailsDrawer />
       <CommandPalette />
       <HelpDialog />
+      <Toaster />
     </div>
   );
 }

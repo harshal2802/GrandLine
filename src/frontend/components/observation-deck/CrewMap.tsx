@@ -39,6 +39,7 @@ const ACTIVITY_LABEL: Record<string, string> = {
   deployment_completed: "Deployed ✓",
   deployment_failed: "Deploy failed ✕",
   pipeline_stage_entered: "Entering stage…",
+  provider_switched: "Switched provider ⚡",
 };
 
 function nodeOf(role: CrewRole): Node | undefined {

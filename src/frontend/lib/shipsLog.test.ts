@@ -52,6 +52,24 @@ describe("rowFromEvent (P3)", () => {
     expect(row.actionType).toBe("validation_passed");
     expect(row.phaseNumber).toBe(2);
   });
+  it("synthesizes a row from a provider_switched event (failover visibility)", () => {
+    const row = rowFromEvent(
+      liveEvent({
+        type: "provider_switched",
+        source_role: "captain",
+        payload: { new_provider: "openai", new_model: "gpt-4o" },
+      }),
+    )!;
+    expect(row.actionType).toBe("provider_switched");
+    expect(row.crewMember).toBe("captain");
+    expect(row.summary).toBe("Switched provider → openai/gpt-4o");
+  });
+  it("handles provider_switched without a model", () => {
+    const row = rowFromEvent(
+      liveEvent({ type: "provider_switched", payload: { new_provider: "ollama" } }),
+    )!;
+    expect(row.summary).toBe("Switched provider → ollama");
+  });
 });
 
 describe("mergeLog (P3, P13)", () => {

@@ -40,6 +40,26 @@ export function rowFromCrewAction(a: CrewActionRead): LogRow {
 }
 
 export function rowFromEvent(e: EventEnvelope): LogRow | null {
+  // Dial System failover isn't a crew_action_recorded, but users should see it
+  // in the log — synthesize a row directly from the provider_switched event.
+  if (e.type === "provider_switched") {
+    const payload = e.payload as Record<string, unknown>;
+    const provider =
+      typeof payload.new_provider === "string" ? payload.new_provider : "another provider";
+    const model = typeof payload.new_model === "string" ? payload.new_model : null;
+    return {
+      event_id: e.event_id,
+      id: e.event_id,
+      createdAt: e.ts,
+      crewMember: e.source_role,
+      actionType: "provider_switched",
+      summary: model
+        ? `Switched provider → ${provider}/${model}`
+        : `Switched provider → ${provider}`,
+      details: payload,
+      phaseNumber: null,
+    };
+  }
   if (e.type !== "crew_action_recorded") return null;
   const p = e.payload as Record<string, unknown>;
   const details = (p.details as Record<string, unknown> | null) ?? null;
