@@ -14,7 +14,6 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.demo.script import DEMO_SCRIPT, DemoStep, build_events
@@ -100,17 +99,6 @@ class DemoReplayer:
                 voyage.phase_status = {**(voyage.phase_status or {}), **step.phase_status}
             session.add(voyage)
             await session.commit()
-
-
-async def load_demo_voyage_id(session: AsyncSession) -> uuid.UUID | None:
-    """Most recent demo voyage id (seeded with the demo marker), or None."""
-    result = await session.execute(
-        select(Voyage.id)
-        .where(Voyage.target_repo == DEMO_TARGET_REPO)
-        .order_by(Voyage.created_at.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
 
 
 # Sentinel marking a seeded demo voyage (no is_demo column / migration needed).
