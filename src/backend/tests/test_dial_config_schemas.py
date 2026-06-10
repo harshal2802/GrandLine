@@ -8,8 +8,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.dial_config import (
+    DialConfigCreate,
+    DialConfigUpdate,
     ShipwrightRoleConfig,
     resolve_shipwright_max_concurrency,
+    validate_fallback_chain,
 )
 
 
@@ -87,3 +90,64 @@ class TestResolveShipwrightMaxConcurrency:
             "shipwright": {"max_concurrency": 5, "model": "claude-sonnet-4"}
         }
         assert resolve_shipwright_max_concurrency(role_mapping) == 5
+
+
+class TestValidateFallbackChain:
+    def test_none_passes(self) -> None:
+        assert validate_fallback_chain(None) is None
+
+    def test_bare_string_entries_pass(self) -> None:
+        chain: dict[str, Any] = {"captain": ["openai", "ollama"]}
+        assert validate_fallback_chain(chain) == chain
+
+    def test_object_entries_pass(self) -> None:
+        chain: dict[str, Any] = {
+            "captain": [{"provider": "openai", "model": "gpt-4o"}],
+        }
+        assert validate_fallback_chain(chain) == chain
+
+    def test_mixed_entries_pass(self) -> None:
+        chain: dict[str, Any] = {
+            "captain": ["ollama", {"provider": "openai", "model": "gpt-4o"}],
+        }
+        assert validate_fallback_chain(chain) == chain
+
+    def test_unknown_provider_string_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported provider 'gemini'"):
+            validate_fallback_chain({"captain": ["gemini"]})
+
+    def test_unknown_provider_object_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported provider 'gemini'"):
+            validate_fallback_chain({"captain": [{"provider": "gemini", "model": "x"}]})
+
+    def test_object_missing_provider_rejected(self) -> None:
+        with pytest.raises(ValueError, match="missing 'provider'"):
+            validate_fallback_chain({"captain": [{"model": "gpt-4o"}]})
+
+    def test_non_list_entries_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be a list"):
+            validate_fallback_chain({"captain": "openai"})
+
+    def test_invalid_entry_type_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be a provider string"):
+            validate_fallback_chain({"captain": [123]})
+
+    def test_dial_config_create_validates_fallback_chain(self) -> None:
+        import uuid
+
+        with pytest.raises(ValidationError):
+            DialConfigCreate(
+                voyage_id=uuid.uuid4(),
+                role_mapping={"captain": {"provider": "anthropic", "model": "x"}},
+                fallback_chain={"captain": ["gemini"]},
+            )
+
+    def test_dial_config_update_validates_fallback_chain(self) -> None:
+        with pytest.raises(ValidationError):
+            DialConfigUpdate(fallback_chain={"captain": ["gemini"]})
+
+    def test_dial_config_update_accepts_object_form(self) -> None:
+        cfg = DialConfigUpdate(
+            fallback_chain={"captain": [{"provider": "openai", "model": "gpt-4o"}]}
+        )
+        assert cfg.fallback_chain == {"captain": [{"provider": "openai", "model": "gpt-4o"}]}
