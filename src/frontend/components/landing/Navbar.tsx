@@ -40,12 +40,22 @@ export default function Navbar() {
               {link.label}
             </a>
           ))}
-          <span
-            className="cursor-default rounded-lg bg-ocean-700/50 px-4 py-2 text-sm text-ocean-400"
-            title="Coming soon"
-          >
-            Chart a Course
-          </span>
+          {process.env.NEXT_PUBLIC_DEMO_MODE === "true" ? (
+            <a
+              href="/app/sea-chart"
+              className="rounded-lg bg-ocean-500 px-4 py-2 text-sm font-medium text-ocean-950 hover:bg-ocean-400"
+              title="Watch the scripted demo voyage"
+            >
+              Watch the Demo →
+            </a>
+          ) : (
+            <span
+              className="cursor-default rounded-lg bg-ocean-700/50 px-4 py-2 text-sm text-ocean-400"
+              title="Coming soon"
+            >
+              Chart a Course
+            </span>
+          )}
         </div>
       </div>
     </nav>

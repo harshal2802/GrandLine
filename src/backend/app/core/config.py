@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     git_author_email: str = "crew@grandline.dev"
     github_api_token: str = ""
 
+    # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
+    demo_mode: bool = False
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
