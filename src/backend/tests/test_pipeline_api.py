@@ -715,6 +715,25 @@ class TestIntervention:
         assert result.crew_action_id == action.id
         svc.redirect.assert_awaited_once_with(voyage, 3, "try again")
 
+    def test_redirect_rejects_phase_zero(self) -> None:
+        # Phases are 1-indexed; a phase-0 target could never be built/drained.
+        from pydantic import ValidationError
+
+        from app.schemas.pipeline import RedirectPhaseRequest
+
+        with pytest.raises(ValidationError):
+            RedirectPhaseRequest(phase_number=0, instruction="x")
+
+    def test_inject_rejects_phase_zero_but_allows_global(self) -> None:
+        from pydantic import ValidationError
+
+        from app.schemas.pipeline import InjectContextRequest
+
+        with pytest.raises(ValidationError):
+            InjectContextRequest(context="x", phase_number=0)
+        # None (global inject) remains valid.
+        assert InjectContextRequest(context="x").phase_number is None
+
 
 # ---------------------------------------------------------------------------
 # GET /status

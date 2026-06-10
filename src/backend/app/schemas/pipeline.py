@@ -41,7 +41,9 @@ class InjectContextRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     context: str = Field(min_length=1, max_length=5000)
-    phase_number: int | None = Field(default=None, ge=0)
+    # Phases are 1-indexed (VoyagePlanSpec/Poneglyph use ge=1); a phase-0 target
+    # would never match a built phase and be silently dropped. None = global.
+    phase_number: int | None = Field(default=None, ge=1)
 
 
 class RedirectPhaseRequest(BaseModel):
@@ -49,7 +51,7 @@ class RedirectPhaseRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    phase_number: int = Field(ge=0)
+    phase_number: int = Field(ge=1)
     instruction: str = Field(min_length=1, max_length=5000)
 
 

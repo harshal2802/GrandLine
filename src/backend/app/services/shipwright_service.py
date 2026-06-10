@@ -46,6 +46,7 @@ from app.services.crew_action_helper import (
 )
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
+from app.services.intervention_service import drain_pending_interventions
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,8 @@ class ShipwrightService:
             ],
             "iteration": 1,
             "last_test_output": None,
+            "injected_context": [],
+            "redirect_instruction": None,
             "raw_output": "",
             "generated_files": None,
             "exit_code": None,
@@ -192,10 +195,26 @@ class ShipwrightService:
 
         iteration_count = 0
         final_parse_error: str | None = None
+        injected_context: list[str] = []
+        redirect_instruction: str | None = None
         try:
             for i in range(1, SHIPWRIGHT_MAX_ITERATIONS + 1):
                 iteration_count = i
                 state["iteration"] = i
+
+                # Drain any pending interventions (inject/redirect) for this phase
+                # so the agent's NEXT LLM call sees them. Each is applied once per
+                # phase, so a new intervention recorded between iterations is
+                # picked up on the following iteration (#51).
+                drained = await drain_pending_interventions(
+                    self._session, voyage.id, phase_number
+                )
+                injected_context.extend(drained.injected_context)
+                if drained.redirect_instruction:
+                    redirect_instruction = drained.redirect_instruction
+                state["injected_context"] = injected_context
+                state["redirect_instruction"] = redirect_instruction
+
                 state = await self._graph.ainvoke(state)
                 await self._checkpoint_iteration(voyage, state)
 

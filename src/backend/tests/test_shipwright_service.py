@@ -168,6 +168,63 @@ def service(
     return svc
 
 
+class TestBuildCodeInterventionDrain:
+    @pytest.mark.asyncio
+    async def test_drained_interventions_feed_into_graph_state(
+        self, service: ShipwrightService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import shipwright_service as ss
+        from app.services.intervention_service import DrainedInterventions
+
+        drained = DrainedInterventions(
+            injected_context=["use redis"], redirect_instruction="use a queue"
+        )
+        monkeypatch.setattr(
+            ss, "drain_pending_interventions", AsyncMock(return_value=drained)
+        )
+
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+
+        state_arg = service._graph.ainvoke.call_args_list[0].args[0]  # type: ignore[attr-defined]
+        assert state_arg["injected_context"] == ["use redis"]
+        assert state_arg["redirect_instruction"] == "use a queue"
+
+    @pytest.mark.asyncio
+    async def test_redirect_between_iterations_reaches_next_iteration(
+        self, service: ShipwrightService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import shipwright_service as ss
+        from app.services.intervention_service import DrainedInterventions
+
+        # Iteration 1 drains an inject; a redirect arrives and is drained on
+        # iteration 2 (the prior inject persists via accumulation).
+        monkeypatch.setattr(
+            ss,
+            "drain_pending_interventions",
+            AsyncMock(
+                side_effect=[
+                    DrainedInterventions(injected_context=["ctx1"]),
+                    DrainedInterventions(redirect_instruction="switch approach"),
+                ]
+            ),
+        )
+        # Iteration 1 fails (keep looping); iteration 2 passes.
+        service._graph.ainvoke = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=[
+                _graph_state(exit_code=1, passed=0, failed=1, stdout="boom"),
+                _graph_state(exit_code=0),
+            ]
+        )
+
+        voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
+        await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)
+
+        second = service._graph.ainvoke.call_args_list[1].args[0]  # type: ignore[attr-defined]
+        assert second["redirect_instruction"] == "switch approach"
+        assert second["injected_context"] == ["ctx1"]
+
+
 class TestPhaseStatusConstants:
     def test_constants_have_expected_values(self) -> None:
         assert PHASE_STATUS_PENDING == "PENDING"

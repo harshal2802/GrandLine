@@ -55,6 +55,8 @@ class ShipwrightState(TypedDict):
     health_checks: list[dict[str, str]]
     iteration: int
     last_test_output: str | None
+    injected_context: list[str]
+    redirect_instruction: str | None
     raw_output: str
     generated_files: list[BuildArtifactSpec] | None
     exit_code: int | None
@@ -75,6 +77,22 @@ def _build_user_message(state: ShipwrightState) -> str:
         f"## Poneglyph (phase {state['phase_number']})\n{poneglyph_block}",
         f"## Tests you must make pass\n{tests_block}",
     ]
+    redirect = state.get("redirect_instruction")
+    if redirect:
+        sections.append(
+            "## Phase redirected by the fleet admiral\n"
+            "Your approach for this phase has been changed. Follow this instruction, "
+            "overriding the Poneglyph where they conflict:\n"
+            f"{redirect}"
+        )
+    injected = state.get("injected_context") or []
+    if injected:
+        joined = "\n\n".join(injected)
+        sections.append(
+            "## Injected context from the fleet admiral\n"
+            "Honor these instructions added mid-voyage:\n"
+            f"{joined}"
+        )
     if state["iteration"] > 1 and state.get("last_test_output"):
         output = state["last_test_output"] or ""
         sections.append(
