@@ -117,11 +117,29 @@ class TestPipelineSchemas:
         with pytest.raises(Exception):
             StartVoyageRequest.model_validate({"task": "short"})
 
-    def test_start_voyage_request_rejects_bad_tier(self) -> None:
+    def test_start_voyage_request_accepts_all_tiers(self) -> None:
+        for tier in ("preview", "staging", "production"):
+            req = StartVoyageRequest.model_validate(
+                {"task": "build a todo app", "deploy_tier": tier}
+            )
+            assert req.deploy_tier == tier
+
+    def test_start_voyage_request_rejects_unknown_tier(self) -> None:
         with pytest.raises(Exception):
             StartVoyageRequest.model_validate(
-                {"task": "build a todo app", "deploy_tier": "production"}
+                {"task": "build a todo app", "deploy_tier": "mainnet"}
             )
+
+    def test_start_voyage_request_accepts_approved_by(self) -> None:
+        approver = uuid.uuid4()
+        # JSON body path (what FastAPI uses): a string UUID is accepted.
+        req = StartVoyageRequest.model_validate_json(
+            f'{{"task": "ship to prod", "deploy_tier": "production", '
+            f'"approved_by": "{approver}"}}'
+        )
+        assert req.approved_by == approver
+        # approved_by defaults to None for the happy path.
+        assert StartVoyageRequest(task="build a todo app").approved_by is None
 
     def test_start_voyage_request_max_parallel_too_low(self) -> None:
         with pytest.raises(Exception):

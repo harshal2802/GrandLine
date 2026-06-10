@@ -3,7 +3,7 @@
 // is handled.
 
 import { apiFetch } from "@/lib/api";
-import type { VoyageListItem } from "@/lib/types";
+import type { DeployTier, VoyageListItem } from "@/lib/types";
 
 export type VoyageCreatePayload = {
   title: string;
@@ -22,10 +22,22 @@ export function createVoyage(payload: VoyageCreatePayload) {
   });
 }
 
-export function startVoyage(id: string, task: string) {
+export type StartVoyageOptions = {
+  deployTier?: DeployTier;
+  // The approving user's id; required by the backend when deployTier is
+  // "production" (the Helmsman refuses to sail to production unapproved).
+  approvedBy?: string | null;
+};
+
+export function startVoyage(id: string, task: string, opts: StartVoyageOptions = {}) {
+  const deployTier = opts.deployTier ?? "preview";
   return apiFetch<{ voyage_id: string; status: string }>(`/voyages/${id}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task, deploy_tier: "preview" }),
+    body: JSON.stringify({
+      task,
+      deploy_tier: deployTier,
+      approved_by: opts.approvedBy ?? null,
+    }),
   });
 }

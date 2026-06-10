@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -42,6 +42,7 @@ from app.models.poneglyph import Poneglyph
 from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
+from app.schemas.deployment import DeploymentTier
 from app.schemas.dial_config import resolve_shipwright_max_concurrency
 from app.schemas.pipeline import PipelineStatusSnapshot
 from app.services.crew_action_helper import (
@@ -103,8 +104,9 @@ class PipelineService:
         voyage: Voyage,
         user_id: uuid.UUID,
         task: str,
-        deploy_tier: Literal["preview"] = "preview",
+        deploy_tier: DeploymentTier = "preview",
         max_parallel_shipwrights: int | None = None,
+        approved_by: uuid.UUID | None = None,
     ) -> None:
         try:
             require_can_enter_planning(voyage)
@@ -152,6 +154,7 @@ class PipelineService:
             "voyage_id": voyage.id,
             "user_id": user_id,
             "deploy_tier": deploy_tier,
+            "approved_by": approved_by,
             "max_parallel_shipwrights": resolved_concurrency,
             "task": task,
             "start_monotonic": run_start,

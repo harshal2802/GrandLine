@@ -21,6 +21,11 @@ export type VoyageStatus =
   | "PAUSED"
   | "CANCELLED";
 
+// Deployment tiers (mirrors app/schemas/deployment.py DeploymentTier).
+export type DeployTier = "preview" | "staging" | "production";
+
+export const DEPLOY_TIERS: readonly DeployTier[] = ["preview", "staging", "production"];
+
 export const TERMINAL_STATUSES: ReadonlySet<VoyageStatus> = new Set<VoyageStatus>([
   "COMPLETED",
   "FAILED",
