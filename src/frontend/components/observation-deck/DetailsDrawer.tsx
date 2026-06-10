@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePlaybackStore } from "@/stores/playback";
 import { useDerivedState } from "@/hooks/useDerivedState";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
@@ -20,6 +20,16 @@ export function DetailsDrawer() {
   const [rbError, setRbError] = useState<string | null>(null);
   const [rbDone, setRbDone] = useState(false);
   const [confirmRollback, setConfirmRollback] = useState(false);
+
+  // The drawer is mounted once and reused across voyages, so reset rollback
+  // state when it switches voyages — otherwise voyage A's "Rolled back" leaks
+  // onto voyage B's panel.
+  useEffect(() => {
+    setRbBusy(false);
+    setRbError(null);
+    setRbDone(false);
+    setConfirmRollback(false);
+  }, [drawerVoyageId]);
 
   const rollback = async () => {
     if (!drawerVoyageId || !deployment?.tier) return;
