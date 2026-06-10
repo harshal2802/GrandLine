@@ -118,6 +118,17 @@ class TestProvidersInConfig:
 
         assert _providers_in_config(None, None) == []
 
+    def test_canonicalizes_claude_code_alias(self) -> None:
+        from app.api.v1.dial import _providers_in_config
+
+        # The hyphen alias must collapse to claude_code (the router's rate-limit
+        # key), and dedupe with the underscore form.
+        providers = _providers_in_config(
+            {"captain": {"provider": "claude-code", "model": "sonnet"}},
+            {"captain": ["claude_code"]},
+        )
+        assert providers == ["claude_code"]
+
 
 class TestGetDialStatus:
     @staticmethod

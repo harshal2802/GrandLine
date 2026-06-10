@@ -6,14 +6,25 @@
 
 import { useEffect, useRef } from "react";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
+import { useVoyageStore } from "@/stores/voyage";
 import { useToastStore } from "@/stores/toast";
 
 export function useFailoverToasts(): void {
   const events = useActiveVoyageEvents();
+  const activeId = useVoyageStore((s) => s.activeVoyageId);
   const push = useToastStore((s) => s.push);
   const seen = useRef(0);
+  const lastVoyage = useRef<string | null>(null);
 
   useEffect(() => {
+    // On voyage switch, treat the freshly-loaded (replayed) batch as already
+    // seen so we don't re-toast a prior voyage's failovers (high-water mark is
+    // per-voyage, not global).
+    if (activeId !== lastVoyage.current) {
+      lastVoyage.current = activeId;
+      seen.current = events.length;
+      return;
+    }
     if (events.length <= seen.current) {
       seen.current = events.length;
       return;
@@ -33,5 +44,5 @@ export function useFailoverToasts(): void {
         body: model ? `Now routing through ${provider}/${model}` : `Now routing through ${provider}`,
       });
     }
-  }, [events, push]);
+  }, [events, push, activeId]);
 }

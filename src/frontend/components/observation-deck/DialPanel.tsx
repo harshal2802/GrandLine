@@ -62,6 +62,11 @@ export function DialPanel({ voyageId }: { voyageId: string }) {
 
   const config = configQuery.data;
   const dirty = JSON.stringify(draft) !== JSON.stringify(config.role_mapping);
+  // PUT replaces role_mapping wholesale and the router rejects any role missing
+  // a provider or model — block the save instead of bricking the voyage's routing.
+  const incomplete = Object.values(draft).some(
+    (c) => !c.provider || !c.model.trim(),
+  );
   const usageByProvider = new Map<string, ProviderWindowUsage>(
     (statusQuery.data?.providers ?? []).map((p) => [p.provider, p]),
   );
@@ -111,13 +116,17 @@ export function DialPanel({ voyageId }: { voyageId: string }) {
         </div>
         <div className="mt-2 flex items-center gap-2">
           <button
-            disabled={!dirty || mutation.isPending}
+            disabled={!dirty || incomplete || mutation.isPending}
             onClick={() => mutation.mutate(draft)}
             className="rounded bg-ocean-500 px-3 py-1 text-xs text-ocean-950 hover:bg-ocean-400 disabled:opacity-50"
           >
             {mutation.isPending ? "Saving…" : "Save mapping"}
           </button>
-          {dirty && <span className="text-xs text-amber-400">Unsaved changes</span>}
+          {incomplete ? (
+            <span className="text-xs text-rose-400">Every role needs a provider and model</span>
+          ) : (
+            dirty && <span className="text-xs text-amber-400">Unsaved changes</span>
+          )}
           {saved && !dirty && <span className="text-xs text-emerald-400">Saved ✓</span>}
           {mutation.isError && (
             <span className="text-xs text-rose-400">

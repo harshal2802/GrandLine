@@ -27,6 +27,15 @@ from app.schemas.dial_system import (
 router = APIRouter(prefix="/voyages", tags=["dial-system"])
 
 
+def _canonical_provider(provider: str) -> str:
+    """Match DialSystemRouter._get_provider_name so rate-limit keys line up.
+
+    The factory accepts the ``claude-code`` alias, but the router records and
+    enforces usage under ``claude_code`` — report headroom under the same name.
+    """
+    return "claude_code" if provider in ("claude_code", "claude-code") else provider
+
+
 def _providers_in_config(
     role_mapping: dict[str, Any] | None, fallback_chain: dict[str, Any] | None
 ) -> list[str]:
@@ -34,13 +43,13 @@ def _providers_in_config(
     providers: set[str] = set()
     for cfg in (role_mapping or {}).values():
         if isinstance(cfg, dict) and cfg.get("provider"):
-            providers.add(str(cfg["provider"]))
+            providers.add(_canonical_provider(str(cfg["provider"])))
     for entries in (fallback_chain or {}).values():
         for entry in entries or []:
             if isinstance(entry, str):
-                providers.add(entry)
+                providers.add(_canonical_provider(entry))
             elif isinstance(entry, dict) and entry.get("provider"):
-                providers.add(str(entry["provider"]))
+                providers.add(_canonical_provider(str(entry["provider"])))
     return sorted(providers)
 
 
