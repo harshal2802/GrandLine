@@ -27,6 +27,7 @@ from app.models.enums import CrewRole, VoyageStatus
 from app.schemas.pipeline import (
     PipelineEventEnvelope,
     PipelineStatusSnapshot,
+    ResumeVoyageRequest,
     StartVoyageRequest,
     StartVoyageResponse,
 )
@@ -42,11 +43,15 @@ def _mock_user() -> MagicMock:
     return user
 
 
-def _mock_voyage(status: str = VoyageStatus.CHARTED.value) -> MagicMock:
+def _mock_voyage(
+    status: str = VoyageStatus.CHARTED.value,
+    description: str | None = "Build a URL shortener with auth",
+) -> MagicMock:
     voyage = MagicMock()
     voyage.id = VOYAGE_ID
     voyage.user_id = USER_ID
     voyage.status = status
+    voyage.description = description
     voyage.phase_status = {}
     return voyage
 
@@ -353,7 +358,7 @@ class TestResumeVoyage:
             v.status = VoyageStatus.CHARTED.value
 
         svc.resume = AsyncMock(side_effect=_resume)
-        body = StartVoyageRequest(task="resume placeholder task")
+        body = ResumeVoyageRequest(task="resume placeholder task")
         registry: dict[uuid.UUID, asyncio.Task[None]] = {}
         request = _mock_request(pipeline_tasks=registry)
 
@@ -381,7 +386,7 @@ class TestResumeVoyage:
             v.status = VoyageStatus.CHARTED.value
 
         svc.resume = AsyncMock(side_effect=_resume)
-        body = StartVoyageRequest(task="resume after failure")
+        body = ResumeVoyageRequest(task="resume after failure")
         request = _mock_request()
 
         result = await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
@@ -400,7 +405,7 @@ class TestResumeVoyage:
         svc = _mock_pipeline_service()
         voyage = _mock_voyage(status=VoyageStatus.CHARTED.value)
         svc.resume = AsyncMock(return_value=None)
-        body = StartVoyageRequest(task="resume already charted")
+        body = ResumeVoyageRequest(task="resume already charted")
         request = _mock_request()
 
         result = await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
@@ -413,6 +418,80 @@ class TestResumeVoyage:
         await asyncio.sleep(0)
 
     @pytest.mark.asyncio
+    async def test_resume_with_empty_body_uses_stored_mission(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(
+            status=VoyageStatus.PAUSED.value, description="Ship the URL shortener"
+        )
+
+        async def _resume(v: Any) -> None:
+            v.status = VoyageStatus.CHARTED.value
+
+        svc.resume = AsyncMock(side_effect=_resume)
+        body = ResumeVoyageRequest()  # empty body — no fabricated task
+        request = _mock_request()
+
+        await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        # start() received the stored mission as the task — never a placeholder.
+        svc.start.assert_called_once()
+        assert svc.start.call_args.args[2] == "Ship the URL shortener"
+        assert svc.start.call_args.args[2] != "resume-voyage"
+
+    @pytest.mark.asyncio
+    async def test_resume_with_explicit_task_overrides_mission(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(status=VoyageStatus.PAUSED.value, description="old mission")
+
+        async def _resume(v: Any) -> None:
+            v.status = VoyageStatus.CHARTED.value
+
+        svc.resume = AsyncMock(side_effect=_resume)
+        body = ResumeVoyageRequest(task="updated mission for this run")
+        request = _mock_request()
+
+        await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        svc.start.assert_called_once()
+        assert svc.start.call_args.args[2] == "updated mission for this run"
+
+    @pytest.mark.asyncio
+    async def test_resume_rejects_when_no_task_and_no_mission(self) -> None:
+        from app.api.v1.pipeline import resume_voyage
+
+        svc = _mock_pipeline_service()
+        voyage = _mock_voyage(status=VoyageStatus.PAUSED.value, description=None)
+        body = ResumeVoyageRequest()
+        request = _mock_request()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await resume_voyage(VOYAGE_ID, body, request, _mock_user(), voyage, svc)
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail["error"]["code"] == "VOYAGE_NO_TASK"
+        # Rejected before flipping status or spawning.
+        svc.resume.assert_not_called()
+        svc.start.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resume_request_schema_defaults(self) -> None:
+        body = ResumeVoyageRequest()
+        assert body.task is None
+        assert body.deploy_tier == "preview"
+        assert body.approved_by is None
+        # Too-short task still rejected when one is supplied.
+        with pytest.raises(Exception):
+            ResumeVoyageRequest.model_validate({"task": "short"})
+
+    @pytest.mark.asyncio
     async def test_returns_409_when_voyage_completed(self) -> None:
         from app.api.v1.pipeline import resume_voyage
 
@@ -423,7 +502,7 @@ class TestResumeVoyage:
                 "Voyage status is COMPLETED; cannot resume a completed voyage",
             )
         )
-        body = StartVoyageRequest(task="resume completed placeholder")
+        body = ResumeVoyageRequest(task="resume completed placeholder")
         request = _mock_request()
 
         with pytest.raises(HTTPException) as exc_info:
@@ -451,7 +530,7 @@ class TestResumeVoyage:
                 "Voyage status is CANCELLED; cannot resume a cancelled voyage",
             )
         )
-        body = StartVoyageRequest(task="resume cancelled placeholder")
+        body = ResumeVoyageRequest(task="resume cancelled placeholder")
         request = _mock_request()
 
         with pytest.raises(HTTPException) as exc_info:
@@ -477,7 +556,7 @@ class TestResumeVoyage:
         try:
             registry: dict[uuid.UUID, asyncio.Task[None]] = {VOYAGE_ID: running}
             request = _mock_request(pipeline_tasks=registry)
-            body = StartVoyageRequest(task="resume running placeholder")
+            body = ResumeVoyageRequest(task="resume running placeholder")
 
             with pytest.raises(HTTPException) as exc_info:
                 await resume_voyage(
@@ -514,7 +593,7 @@ class TestResumeVoyage:
                 "or wait for the current run to reach a resumable state",
             )
         )
-        body = StartVoyageRequest(task="resume mid-stage placeholder")
+        body = ResumeVoyageRequest(task="resume mid-stage placeholder")
         request = _mock_request()
 
         with pytest.raises(HTTPException) as exc_info:
@@ -556,7 +635,7 @@ class TestResumeVoyage:
         # Voyage owner-mismatch is a dependency-layer concern; the dependency
         # would short-circuit with 404. Inside the endpoint, we should accept
         # whatever voyage the dependency injected.
-        body = StartVoyageRequest(task="resume placeholder body")
+        body = ResumeVoyageRequest(task="resume placeholder body")
         request = _mock_request()
 
         async def _resume(v: Any) -> None:

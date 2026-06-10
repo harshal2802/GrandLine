@@ -40,6 +40,23 @@ class StartVoyageRequest(BaseModel):
     max_parallel_shipwrights: int | None = Field(default=None, ge=1, le=10)
 
 
+class ResumeVoyageRequest(BaseModel):
+    """POST /voyages/{id}/resume request body.
+
+    All fields are optional: an empty body (`{}`) resumes a PAUSED/FAILED voyage
+    using the voyage's stored mission (`description`). Planning is skip-already-
+    satisfied on resume, so no fresh task is needed. A `task`, when supplied,
+    updates the mission for this run.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    task: str | None = Field(default=None, min_length=10, max_length=5000)
+    deploy_tier: DeploymentTier = "preview"
+    approved_by: uuid.UUID | None = None
+    max_parallel_shipwrights: int | None = Field(default=None, ge=1, le=10)
+
+
 class InjectContextRequest(BaseModel):
     """POST /voyages/{id}/inject request body (Phase 17)."""
 
