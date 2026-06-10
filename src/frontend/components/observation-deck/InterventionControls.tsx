@@ -48,13 +48,17 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
     }
   };
 
-  if (terminal) return null;
+  // Terminal voyages are read-only: keep the controls visible but disabled with
+  // a tooltip (rather than hiding them or firing requests that 409 server-side).
+  const terminalTip = terminal ? "Voyage is in a terminal state" : undefined;
+  const locked = busy || terminal;
 
   return (
     <div className="flex items-center gap-2 text-xs">
       {paused ? (
         <button
-          disabled={busy}
+          disabled={locked}
+          title={terminalTip}
           onClick={() => run(() => resumeVoyage(voyageId))}
           className="rounded border border-emerald-700 px-2 py-1 text-emerald-300 hover:bg-emerald-900/40 disabled:opacity-50"
         >
@@ -62,7 +66,8 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
         </button>
       ) : (
         <button
-          disabled={busy}
+          disabled={locked}
+          title={terminalTip}
           onClick={() => run(() => pauseVoyage(voyageId))}
           className="rounded border border-amber-700 px-2 py-1 text-amber-300 hover:bg-amber-900/40 disabled:opacity-50"
         >
@@ -71,7 +76,8 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
       )}
 
       <button
-        disabled={busy}
+        disabled={locked}
+        title={terminalTip}
         onClick={() => setShowInject(true)}
         className="rounded border border-ocean-700 px-2 py-1 text-ocean-300 hover:bg-ocean-800 disabled:opacity-50"
       >
@@ -79,7 +85,8 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
       </button>
 
       <button
-        disabled={busy}
+        disabled={locked}
+        title={terminalTip}
         onClick={() => setShowRedirect(true)}
         className="rounded border border-amber-700 px-2 py-1 text-amber-300 hover:bg-amber-900/40 disabled:opacity-50"
       >
@@ -87,12 +94,15 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
       </button>
 
       <button
-        disabled={busy}
+        disabled={locked}
+        title={terminalTip}
         onClick={() => setConfirmCancel(true)}
         className="rounded border border-rose-700 px-2 py-1 text-rose-300 hover:bg-rose-900/40 disabled:opacity-50"
       >
         ✕ Cancel
       </button>
+
+      {terminal && <span className="text-ocean-500">(read-only)</span>}
 
       {error && <span className="text-rose-400">{error}</span>}
 
