@@ -192,6 +192,8 @@ class TestFailover:
         assert event.event_type == "provider_switched"
         assert event.voyage_id == VOYAGE_ID
         assert event.source_role == CrewRole.CAPTAIN
+        assert event.payload["new_provider"] == "openai"
+        assert event.payload["new_model"] == "gpt-4o"
 
     @pytest.mark.asyncio
     async def test_no_event_when_primary_succeeds(self) -> None:

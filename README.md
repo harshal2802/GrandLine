@@ -64,10 +64,18 @@ providers:
     "helmsman":   {"provider": "claude_code", "model": "claude-sonnet-4-20250514"}
   },
   "fallback_chain": {
-    "captain": ["openai", "ollama"]
+    "captain": [
+      {"provider": "openai", "model": "gpt-4o"},
+      {"provider": "ollama", "model": "llama3"}
+    ]
   }
 }
 ```
+
+Each fallback entry carries its **own** provider *and* model so cross-vendor
+failover works (a Claude model id can't be sent to OpenAI). A bare string —
+`"captain": ["openai"]` — still works and resolves to that provider's default
+model, but the object form above is recommended.
 
 Supported providers:
 

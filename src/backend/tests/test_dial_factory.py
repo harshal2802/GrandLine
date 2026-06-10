@@ -12,8 +12,14 @@ from app.dial_system.adapters.anthropic import AnthropicAdapter
 from app.dial_system.adapters.claude_code import ClaudeCodeAdapter
 from app.dial_system.adapters.ollama import OllamaAdapter
 from app.dial_system.adapters.openai import OpenAIAdapter
-from app.dial_system.factory import build_router_from_config, create_adapter
+from app.dial_system.factory import (
+    _default_model_for,
+    _resolve_fallback_entry,
+    build_router_from_config,
+    create_adapter,
+)
 from app.models.dial_config import DialConfig
+from app.models.enums import CrewRole
 
 VOYAGE_ID = uuid.uuid4()
 
@@ -123,3 +129,78 @@ class TestBuildRouterFromConfig:
 
         router = build_router_from_config(config, _make_settings(), MagicMock(), MagicMock())
         assert router is not None
+
+
+class TestResolveFallbackEntry:
+    def test_object_form_uses_explicit_model(self) -> None:
+        provider, model = _resolve_fallback_entry(
+            {"provider": "openai", "model": "gpt-4o-mini"}, _make_settings()
+        )
+        assert (provider, model) == ("openai", "gpt-4o-mini")
+
+    def test_bare_string_resolves_to_provider_default(self) -> None:
+        provider, model = _resolve_fallback_entry("openai", _make_settings())
+        assert provider == "openai"
+        assert model == "gpt-4o"
+
+    def test_object_form_without_model_uses_provider_default(self) -> None:
+        provider, model = _resolve_fallback_entry({"provider": "ollama"}, _make_settings())
+        assert (provider, model) == ("ollama", "llama3")
+
+    def test_default_model_for_configured_provider_uses_settings(self) -> None:
+        settings = Settings(
+            anthropic_api_key="k",
+            openai_api_key="k",
+            dial_default_provider="anthropic",
+            dial_default_model="claude-custom-9",
+        )
+        assert _default_model_for("anthropic", settings) == "claude-custom-9"
+
+    def test_unknown_fallback_provider_raises(self) -> None:
+        with pytest.raises(ValueError, match="No default model known"):
+            _resolve_fallback_entry("gemini", _make_settings())
+
+    def test_invalid_entry_shape_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid fallback entry"):
+            _resolve_fallback_entry(123, _make_settings())
+
+    def test_object_form_missing_provider_raises(self) -> None:
+        with pytest.raises(ValueError, match="missing 'provider'"):
+            _resolve_fallback_entry({"model": "gpt-4o"}, _make_settings())
+
+
+class TestCrossVendorFailoverModel:
+    """Regression for #50: fallbacks must not reuse the primary's model id."""
+
+    def test_fallback_adapter_uses_its_own_model_not_primary(self) -> None:
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={
+                "captain": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+            },
+            fallback_chain={"captain": [{"provider": "openai", "model": "gpt-4o"}]},
+        )
+
+        router = build_router_from_config(config, _make_settings(), MagicMock(), MagicMock())
+
+        fallback = router._fallback_chains[CrewRole.CAPTAIN][0]
+        assert isinstance(fallback, OpenAIAdapter)
+        assert fallback._model == "gpt-4o"
+        assert fallback._model != "claude-sonnet-4-20250514"
+
+    def test_bare_string_fallback_does_not_inherit_primary_model(self) -> None:
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={
+                "captain": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+            },
+            fallback_chain={"captain": ["openai"]},
+        )
+
+        router = build_router_from_config(config, _make_settings(), MagicMock(), MagicMock())
+
+        fallback = router._fallback_chains[CrewRole.CAPTAIN][0]
+        assert isinstance(fallback, OpenAIAdapter)
+        assert fallback._model == "gpt-4o"

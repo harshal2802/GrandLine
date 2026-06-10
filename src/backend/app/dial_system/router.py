@@ -86,7 +86,7 @@ class DialSystemRouter:
                     await self._rate_limiter.record_usage(
                         result.provider, result.usage.total_tokens
                     )
-                await self._publish_switch_event(role, result.provider)
+                await self._publish_switch_event(role, result.provider, result.model)
                 return result
             except ProviderError as exc:
                 logger.warning("Fallback provider failed for %s: %s", role.value, exc)
@@ -115,8 +115,9 @@ class DialSystemRouter:
                 continue
             try:
                 fallback_name = self._get_provider_name(fallback)
+                fallback_model = getattr(fallback, "_model", None)
                 await self._call_switch_hook(role, fallback_name)
-                await self._publish_switch_event(role, fallback_name)
+                await self._publish_switch_event(role, fallback_name, fallback_model)
                 async for token in fallback.stream(request):
                     yield token
                 return
@@ -146,11 +147,16 @@ class DialSystemRouter:
         except Exception as exc:
             logger.warning("on_provider_switch hook failed for %s: %s", role.value, exc)
 
-    async def _publish_switch_event(self, role: CrewRole, new_provider: str) -> None:
+    async def _publish_switch_event(
+        self, role: CrewRole, new_provider: str, new_model: str | None = None
+    ) -> None:
+        payload: dict[str, str] = {"new_provider": new_provider}
+        if new_model:
+            payload["new_model"] = new_model
         event = ProviderSwitchedEvent(
             voyage_id=self._voyage_id,
             source_role=role,
-            payload={"new_provider": new_provider},
+            payload=payload,
         )
         stream = stream_key(self._voyage_id)
         await self._mushi.publish(stream, event)
