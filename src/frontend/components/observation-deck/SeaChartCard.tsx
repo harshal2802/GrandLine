@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useVoyageProgress } from "@/hooks/useVoyageProgress";
+import { computeProgress } from "@/hooks/useVoyageProgress";
 import { useFocusStore } from "@/stores/focus";
 import { useVoyageStore } from "@/stores/voyage";
 import type { VoyageListItem } from "@/lib/types";
@@ -19,14 +19,19 @@ function relativeTime(ts: number | null): string {
 
 export function SeaChartCard({
   voyage,
+  livePhaseStatus,
   onOpen,
   onSelect,
 }: {
   voyage: VoyageListItem;
+  // Live, WS-derived phase status for the active voyage (overrides the polled
+  // snapshot so chips flip within ~1s; falls back to the poll when absent).
+  livePhaseStatus?: Record<string, string>;
   onOpen?: (id: string) => void;
   onSelect?: (id: string) => void;
 }) {
-  const progress = useVoyageProgress(voyage);
+  const phaseStatus = livePhaseStatus ?? voyage.phase_status;
+  const progress = computeProgress(voyage.status, phaseStatus);
   const setHoveredPhase = useFocusStore((s) => s.setHoveredPhase);
   const lastEventTs = useVoyageStore(
     (s) => s.buffers[voyage.id]?.lastEventTs ?? null,
@@ -79,7 +84,7 @@ export function SeaChartCard({
           </div>
           {/* Cross-view: hovering a phase highlights it elsewhere. */}
           <div className="mt-1 flex flex-wrap gap-1">
-            {Object.keys(voyage.phase_status).map((p) => (
+            {Object.keys(phaseStatus).map((p) => (
               <span
                 key={p}
                 onMouseEnter={() => setHoveredPhase(Number(p))}

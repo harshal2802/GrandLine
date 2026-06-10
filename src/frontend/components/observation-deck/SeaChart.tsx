@@ -3,13 +3,16 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVoyages } from "@/hooks/useVoyages";
 import { usePlaybackStore } from "@/stores/playback";
+import { useVoyageStore } from "@/stores/voyage";
+import { useDerivedState } from "@/hooks/useDerivedState";
 import type { VoyageListItem, VoyageStatus } from "@/lib/types";
 import { SeaChartCard } from "./SeaChartCard";
 import { EmptyState } from "./EmptyState";
 
 // Pipeline columns (PLAN Phase 2). CHARTED/PLANNING collapse into "Planning";
-// PDD/TDD/BUILDING/REVIEWING/DEPLOYING each get a column; PAUSED rides with its
-// stage via the BUILDING column fallback.
+// PDD/TDD/BUILDING/REVIEWING/DEPLOYING each get a column. A PAUSED voyage stays
+// in the column of the stage it was paused in (recovered from the live stream
+// for the active voyage), rather than always jumping to Building.
 const COLUMNS: { key: string; label: string; statuses: VoyageStatus[] }[] = [
   { key: "planning", label: "Planning", statuses: ["CHARTED", "PLANNING"] },
   { key: "pdd", label: "PDD", statuses: ["PDD"] },
@@ -19,8 +22,22 @@ const COLUMNS: { key: string; label: string; statuses: VoyageStatus[] }[] = [
   { key: "deploying", label: "Deploying", statuses: ["DEPLOYING"] },
 ];
 
-function columnFor(status: VoyageStatus): string {
+export function columnFor(status: VoyageStatus): string {
   return COLUMNS.find((c) => c.statuses.includes(status))?.key ?? "planning";
+}
+
+// A PAUSED voyage keeps the column of the stage it was paused in. For the active
+// (streamed) voyage we recover that stage from the live reducer status; without
+// it (non-active / no events) we fall back to the polled status.
+export function columnForVoyage(
+  voyage: Pick<VoyageListItem, "id" | "status">,
+  activeId: string | null,
+  liveStatus: VoyageStatus | null,
+): string {
+  if (voyage.id === activeId && voyage.status === "PAUSED" && liveStatus) {
+    return columnFor(liveStatus);
+  }
+  return columnFor(voyage.status);
 }
 
 export function SeaChart() {
@@ -33,6 +50,20 @@ export function SeaChart() {
 
   const activeVoyages = active.data?.pages.flatMap((p) => p.items) ?? [];
   const terminalVoyages = terminal.data?.pages.flatMap((p) => p.items) ?? [];
+
+  // Live overlay for the currently-streamed voyage: the playback reducer tracks
+  // phase status and the last stage entered from the WS within ~1s, so its card
+  // doesn't wait on the 15s status poll (and a PAUSED card keeps its stage).
+  const activeId = useVoyageStore((s) => s.activeVoyageId);
+  const derived = useDerivedState();
+
+  const livePhaseStatus = (v: VoyageListItem): Record<string, string> | undefined => {
+    if (v.id !== activeId) return undefined;
+    const ws: Record<string, string> = {};
+    for (const [n, s] of Object.entries(derived.phaseStatus)) ws[n] = s;
+    // Poll gives the full phase set; WS gives the freshest per-phase status.
+    return { ...v.phase_status, ...ws };
+  };
 
   const openDrawer = usePlaybackStore((s) => s.openDrawer);
 
@@ -58,7 +89,7 @@ export function SeaChart() {
   }
 
   const byColumn = (key: string): VoyageListItem[] =>
-    activeVoyages.filter((v) => columnFor(v.status) === key);
+    activeVoyages.filter((v) => columnForVoyage(v, activeId, derived.status) === key);
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -81,7 +112,13 @@ export function SeaChart() {
               </header>
               <div className="flex flex-col gap-2 p-2">
                 {cards.map((v) => (
-                  <SeaChartCard key={v.id} voyage={v} onSelect={select} onOpen={open} />
+                  <SeaChartCard
+                    key={v.id}
+                    voyage={v}
+                    livePhaseStatus={livePhaseStatus(v)}
+                    onSelect={select}
+                    onOpen={open}
+                  />
                 ))}
               </div>
             </section>
