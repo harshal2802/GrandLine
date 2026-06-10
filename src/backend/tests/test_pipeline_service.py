@@ -486,6 +486,7 @@ class TestPipelineStateShape:
             "voyage_id": VOYAGE_ID,
             "user_id": USER_ID,
             "deploy_tier": "preview",
+            "approved_by": None,
             "max_parallel_shipwrights": 1,
             "task": "t",
             "start_monotonic": time.monotonic(),

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.deployment import DeploymentTier
 
 
 class PipelineStatusSnapshot(BaseModel):
@@ -31,7 +33,10 @@ class StartVoyageRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     task: str = Field(min_length=10, max_length=5000)
-    deploy_tier: Literal["preview"] = "preview"
+    deploy_tier: DeploymentTier = "preview"
+    # Required when deploy_tier == "production" (the Helmsman refuses to sail to
+    # production without an approver). The deck sends the approving user's id.
+    approved_by: uuid.UUID | None = None
     max_parallel_shipwrights: int | None = Field(default=None, ge=1, le=10)
 
 

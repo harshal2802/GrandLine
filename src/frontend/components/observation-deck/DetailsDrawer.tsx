@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePlaybackStore } from "@/stores/playback";
 import { useDerivedState } from "@/hooks/useDerivedState";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
+import { latestDeployment, rollbackDeployment } from "@/lib/deployments";
 
 type Tab = "overview" | "events" | "timestamps";
 
@@ -13,6 +14,37 @@ export function DetailsDrawer() {
   const derived = useDerivedState();
   const events = useActiveVoyageEvents();
   const [tab, setTab] = useState<Tab>("overview");
+
+  const deployment = latestDeployment(events);
+  const [rbBusy, setRbBusy] = useState(false);
+  const [rbError, setRbError] = useState<string | null>(null);
+  const [rbDone, setRbDone] = useState(false);
+  const [confirmRollback, setConfirmRollback] = useState(false);
+
+  // The drawer is mounted once and reused across voyages, so reset rollback
+  // state when it switches voyages — otherwise voyage A's "Rolled back" leaks
+  // onto voyage B's panel.
+  useEffect(() => {
+    setRbBusy(false);
+    setRbError(null);
+    setRbDone(false);
+    setConfirmRollback(false);
+  }, [drawerVoyageId]);
+
+  const rollback = async () => {
+    if (!drawerVoyageId || !deployment?.tier) return;
+    setRbBusy(true);
+    setRbError(null);
+    try {
+      await rollbackDeployment(drawerVoyageId, deployment.tier);
+      setRbDone(true);
+    } catch (e) {
+      setRbError(e instanceof Error ? e.message : "Rollback failed");
+    } finally {
+      setRbBusy(false);
+      setConfirmRollback(false);
+    }
+  };
 
   if (!drawerVoyageId) return null;
 
@@ -54,6 +86,58 @@ export function DetailsDrawer() {
                 <div className="rounded border border-rose-700 bg-rose-500/10 p-2 text-rose-200">
                   <p className="font-medium">Failure at {derived.failure.stage}</p>
                   <p className="text-xs">{derived.failure.code}: {derived.failure.message}</p>
+                </div>
+              )}
+
+              {deployment && (
+                <div className="rounded border border-emerald-800 bg-emerald-500/10 p-2">
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-emerald-300">
+                    Deployment{deployment.tier ? ` · ${deployment.tier}` : ""}
+                  </p>
+                  {deployment.url ? (
+                    <a
+                      href={deployment.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-xs text-emerald-200 underline hover:text-emerald-100"
+                    >
+                      {deployment.url} ↗
+                    </a>
+                  ) : (
+                    <p className="text-xs text-emerald-200/70">No URL reported.</p>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      disabled={rbBusy || rbDone || !deployment.tier}
+                      onClick={() => setConfirmRollback(true)}
+                      className="rounded border border-amber-700 px-2 py-0.5 text-xs text-amber-300 hover:bg-amber-900/40 disabled:opacity-50"
+                    >
+                      {rbDone ? "Rolled back" : rbBusy ? "Rolling back…" : "↩ Rollback"}
+                    </button>
+                    {rbError && <span className="text-xs text-rose-400">{rbError}</span>}
+                  </div>
+                  {confirmRollback && (
+                    <div className="mt-2 rounded border border-amber-700 bg-amber-500/10 p-2">
+                      <p className="text-xs text-amber-200">
+                        Roll back the latest <strong>{deployment.tier}</strong>{" "}
+                        deployment?
+                      </p>
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button
+                          onClick={() => setConfirmRollback(false)}
+                          className="rounded border border-ocean-700 px-2 py-0.5 text-xs text-ocean-300 hover:bg-ocean-800"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => void rollback()}
+                          className="rounded bg-amber-600 px-2 py-0.5 text-xs text-white hover:bg-amber-500"
+                        >
+                          Roll back
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div>

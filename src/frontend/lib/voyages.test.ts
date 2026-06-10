@@ -49,6 +49,28 @@ describe("voyage lifecycle API", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       task: "Build a URL shortener",
       deploy_tier: "preview",
+      approved_by: null,
+    });
+  });
+
+  it("sends the chosen tier and approver when provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ voyage_id: "v2", status: "CHARTED" }), {
+        status: 202,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startVoyage("v2", "Ship to production safely", {
+      deployTier: "production",
+      approvedBy: "user-123",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      task: "Ship to production safely",
+      deploy_tier: "production",
+      approved_by: "user-123",
     });
   });
 

@@ -1,9 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import { useVoyageProgress } from "@/hooks/useVoyageProgress";
 import { useFocusStore } from "@/stores/focus";
 import { useVoyageStore } from "@/stores/voyage";
 import type { VoyageListItem } from "@/lib/types";
+import { latestDeployment } from "@/lib/deployments";
 import { StatusBadge } from "./StatusBadge";
 
 function relativeTime(ts: number | null): string {
@@ -29,6 +31,13 @@ export function SeaChartCard({
   const lastEventTs = useVoyageStore(
     (s) => s.buffers[voyage.id]?.lastEventTs ?? null,
   );
+  // Deployment URL lives only in the event stream (P5). Derive it for completed
+  // voyages so the card can link the live artifact.
+  const eventsMap = useVoyageStore((s) => s.buffers[voyage.id]?.events);
+  const deploymentUrl = useMemo(() => {
+    if (voyage.status !== "COMPLETED" || !eventsMap) return null;
+    return latestDeployment(Array.from(eventsMap.values()))?.url ?? null;
+  }, [voyage.status, eventsMap]);
 
   return (
     <article
@@ -82,6 +91,19 @@ export function SeaChartCard({
             ))}
           </div>
         </div>
+      )}
+
+      {deploymentUrl && (
+        <a
+          href={deploymentUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 block truncate text-[11px] text-emerald-300 underline hover:text-emerald-200"
+          title={deploymentUrl}
+        >
+          🚀 View deployment ↗
+        </a>
       )}
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-ocean-500">

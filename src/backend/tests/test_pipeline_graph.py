@@ -205,11 +205,14 @@ def _make_state(
     paused: bool = False,
     error: dict | None = None,
     max_parallel: int = 1,
+    deploy_tier: str = "preview",
+    approved_by: uuid.UUID | None = None,
 ) -> PipelineState:
     return {
         "voyage_id": VOYAGE_ID,
         "user_id": USER_ID,
-        "deploy_tier": "preview",
+        "deploy_tier": deploy_tier,  # type: ignore[typeddict-item]
+        "approved_by": approved_by,
         "max_parallel_shipwrights": max_parallel,
         "task": "t",
         "start_monotonic": time.monotonic(),
@@ -732,6 +735,32 @@ class TestDeployingNode:
         result = await node(_make_state())
         helmsman.deploy.assert_awaited_once()
         assert result["deployment_id"] == deployment.deployment_id
+
+    @pytest.mark.asyncio
+    async def test_passes_tier_and_approval_to_helmsman(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = _mock_ctx()
+        voyage = _mock_voyage()
+        _patch_loads(monkeypatch, voyage=voyage, latest_validation=MagicMock(status="passed"))
+        _mock_guard(monkeypatch, "require_can_enter_deploying")
+
+        deployment = MagicMock()
+        deployment.deployment_id = uuid.uuid4()
+        helmsman = MagicMock()
+        helmsman.deploy = AsyncMock(return_value=deployment)
+        monkeypatch.setattr(
+            "app.crew.pipeline_graph.HelmsmanService", MagicMock(return_value=helmsman)
+        )
+
+        approver = uuid.uuid4()
+        node = _make_deploying_node(ctx)
+        await node(_make_state(deploy_tier="production", approved_by=approver))
+
+        _, kwargs = helmsman.deploy.call_args
+        args = helmsman.deploy.call_args.args
+        assert args[1] == "production"
+        assert kwargs.get("approved_by") == approver
 
     @pytest.mark.asyncio
     async def test_never_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:

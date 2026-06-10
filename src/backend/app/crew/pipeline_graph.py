@@ -24,7 +24,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -51,6 +51,7 @@ from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
 from app.schemas.captain import VoyagePlanSpec
+from app.schemas.deployment import DeploymentTier
 from app.services.captain_service import CaptainError, CaptainService
 from app.services.doctor_service import DoctorError, DoctorService
 from app.services.execution_service import ExecutionService
@@ -87,7 +88,8 @@ StageFn = Callable[["PipelineState"], Awaitable[dict[str, Any]]]
 class PipelineState(TypedDict):
     voyage_id: uuid.UUID
     user_id: uuid.UUID
-    deploy_tier: Literal["preview"]
+    deploy_tier: DeploymentTier
+    approved_by: uuid.UUID | None
     max_parallel_shipwrights: int
     task: str
     start_monotonic: float
@@ -628,7 +630,12 @@ def _make_deploying_node(ctx: PipelineContext) -> StageFn:
             helmsman = HelmsmanService(
                 ctx.dial_router, ctx.mushi, session, ctx.deployment_backend, ctx.git_service
             )
-            deployment = await helmsman.deploy(voyage, state["deploy_tier"], state["user_id"])
+            deployment = await helmsman.deploy(
+                voyage,
+                state["deploy_tier"],
+                state["user_id"],
+                approved_by=state.get("approved_by"),
+            )
             return {"deployment_id": deployment.deployment_id}
 
         return await _run_stage_with_guard(

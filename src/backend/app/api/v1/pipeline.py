@@ -107,6 +107,7 @@ def _spawn_pipeline_task(
             body.task,
             body.deploy_tier,
             body.max_parallel_shipwrights,
+            approved_by=body.approved_by,
         )
     )
     registry[voyage_id] = task
