@@ -145,6 +145,47 @@ class TestGenerateNode:
         assert "Previous attempt" not in user_msg["content"]
 
     @pytest.mark.asyncio
+    async def test_injected_context_appears_verbatim(self) -> None:
+        mock_router = AsyncMock()
+        mock_router.route = AsyncMock(return_value=_llm_result(VALID_OUTPUT_JSON))
+
+        await generate(
+            _base_state(injected_context=["Use PostgreSQL, not SQLite"]),
+            mock_router,  # type: ignore[arg-type]
+        )
+
+        request = mock_router.route.call_args.args[1]
+        user_msg = next(m for m in request.messages if m["role"] == "user")
+        assert "Injected context from the fleet admiral" in user_msg["content"]
+        assert "Use PostgreSQL, not SQLite" in user_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_redirect_instruction_appears_verbatim(self) -> None:
+        mock_router = AsyncMock()
+        mock_router.route = AsyncMock(return_value=_llm_result(VALID_OUTPUT_JSON))
+
+        await generate(
+            _base_state(redirect_instruction="Rewrite using async generators"),
+            mock_router,  # type: ignore[arg-type]
+        )
+
+        request = mock_router.route.call_args.args[1]
+        user_msg = next(m for m in request.messages if m["role"] == "user")
+        assert "Phase redirected by the fleet admiral" in user_msg["content"]
+        assert "Rewrite using async generators" in user_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_no_intervention_blocks_without_interventions(self) -> None:
+        mock_router = AsyncMock()
+        mock_router.route = AsyncMock(return_value=_llm_result(VALID_OUTPUT_JSON))
+
+        await generate(_base_state(), mock_router)  # type: ignore[arg-type]
+
+        request = mock_router.route.call_args.args[1]
+        user_msg = next(m for m in request.messages if m["role"] == "user")
+        assert "fleet admiral" not in user_msg["content"]
+
+    @pytest.mark.asyncio
     async def test_valid_json_populates_generated_files(self) -> None:
         mock_router = AsyncMock()
         mock_router.route = AsyncMock(return_value=_llm_result(VALID_OUTPUT_JSON))

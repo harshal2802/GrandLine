@@ -8,11 +8,12 @@ import {
   cancelVoyage,
   injectContext,
   pauseVoyage,
+  redirectPhase,
   resumeVoyage,
 } from "@/lib/intervention";
 
-// Fleet-admiral control bar (Phase 17). Pause/Resume/Cancel + Inject context,
-// with confirmation for the destructive Cancel.
+// Fleet-admiral control bar (Phase 17). Pause/Resume/Cancel + Inject + Redirect,
+// with confirmation for the destructive Cancel and phase-replanning Redirect.
 export function InterventionControls({ voyageId }: { voyageId: string }) {
   const status = useVoyageStore((s) => s.buffers[voyageId]?.status);
   const queryClient = useQueryClient();
@@ -22,6 +23,9 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [showInject, setShowInject] = useState(false);
   const [injectText, setInjectText] = useState("");
+  const [showRedirect, setShowRedirect] = useState(false);
+  const [redirectPhaseNum, setRedirectPhaseNum] = useState("");
+  const [redirectText, setRedirectText] = useState("");
 
   const paused = status === "PAUSED";
   const terminal = isTerminal(status);
@@ -72,6 +76,14 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
         className="rounded border border-ocean-700 px-2 py-1 text-ocean-300 hover:bg-ocean-800 disabled:opacity-50"
       >
         ✎ Inject
+      </button>
+
+      <button
+        disabled={busy}
+        onClick={() => setShowRedirect(true)}
+        className="rounded border border-amber-700 px-2 py-1 text-amber-300 hover:bg-amber-900/40 disabled:opacity-50"
+      >
+        ⤳ Redirect
       </button>
 
       <button
@@ -142,6 +154,61 @@ export function InterventionControls({ voyageId }: { voyageId: string }) {
               className="rounded bg-ocean-500 px-3 py-1 text-sm text-ocean-950 hover:bg-ocean-400 disabled:opacity-50"
             >
               Inject
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Redirect a phase (re-plans — destructive) */}
+      {showRedirect && (
+        <Modal title="Redirect a phase" onClose={() => setShowRedirect(false)}>
+          <p className="mb-3 text-sm text-amber-300/90">
+            This re-plans the targeted phase: the Shipwright rebuilds it from the
+            next iteration using your new instruction, overriding the original
+            Poneglyph where they conflict.
+          </p>
+          <label className="mb-1 block text-xs text-ocean-400">Phase number</label>
+          <input
+            type="number"
+            min={0}
+            value={redirectPhaseNum}
+            onChange={(e) => setRedirectPhaseNum(e.target.value)}
+            className="mb-3 w-28 rounded border border-ocean-700 bg-ocean-950 px-2 py-1 text-sm text-ocean-100 outline-none focus:border-ocean-400"
+            placeholder="e.g. 1"
+          />
+          <label className="mb-1 block text-xs text-ocean-400">New instruction</label>
+          <textarea
+            value={redirectText}
+            onChange={(e) => setRedirectText(e.target.value)}
+            rows={4}
+            className="w-full rounded border border-ocean-700 bg-ocean-950 px-2 py-1 text-sm text-ocean-100 outline-none focus:border-ocean-400"
+            placeholder="e.g. use a state machine instead of nested callbacks"
+          />
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              onClick={() => setShowRedirect(false)}
+              className="rounded border border-ocean-700 px-3 py-1 text-sm text-ocean-300 hover:bg-ocean-800"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={
+                !redirectText.trim() ||
+                redirectPhaseNum.trim() === "" ||
+                Number.isNaN(Number(redirectPhaseNum)) ||
+                Number(redirectPhaseNum) < 0
+              }
+              onClick={() => {
+                const phase = Number(redirectPhaseNum);
+                const instruction = redirectText.trim();
+                setShowRedirect(false);
+                setRedirectPhaseNum("");
+                setRedirectText("");
+                run(() => redirectPhase(voyageId, phase, instruction));
+              }}
+              className="rounded bg-amber-600 px-3 py-1 text-sm text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              Redirect phase
             </button>
           </div>
         </Modal>
