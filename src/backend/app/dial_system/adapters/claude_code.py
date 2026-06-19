@@ -185,9 +185,7 @@ class ClaudeCodeAdapter(ProviderAdapter):
             # exits non-zero, so include a stdout tail to make the cause visible.
             self._note_rate_limit(f"{err_text} {out_text}")
             detail = err_text.strip() or out_text[-_ERROR_TAIL_CHARS:]
-            raise ProviderError(
-                f"Claude Code CLI exited with code {proc.returncode}: {detail}"
-            )
+            raise ProviderError(f"Claude Code CLI exited with code {proc.returncode}: {detail}")
 
         try:
             data: dict[str, Any] = json.loads(stdout.decode(errors="replace"))
