@@ -24,28 +24,53 @@ PROVIDER_NAME = "claude_code"
 # Tail of stderr/output included in ProviderError messages.
 _ERROR_TAIL_CHARS = 500
 
+# Appended to the folded prompt whenever a system prompt is present. The Claude
+# Code CLI is an agentic coding tool; without this contract it tends to reach for
+# the Write tool (denied under --max-turns 1) or return prose/code instead of the
+# structured JSON the crew parsers require.
+_RESPONSE_CONTRACT = (
+    "\n\n=== RESPONSE FORMAT (mandatory) ===\n"
+    "You are a non-interactive completion endpoint with no tools and no filesystem. "
+    "Return ONLY the output the instructions above ask for — no preamble, no "
+    "explanation, no markdown code fences, and no tool-call syntax. When asked for "
+    "JSON, return a single raw JSON object; when asked to produce code, place it "
+    "inside the requested JSON field rather than writing it to a file."
+)
+
 
 def _build_prompt(messages: list[dict[str, str]]) -> tuple[str, str | None]:
     """Flatten chat messages into a single CLI prompt + optional system prompt.
 
     The Claude Code CLI takes one prompt string (via stdin in print mode), so
-    multi-turn history is rendered as a Human/Assistant transcript. System
-    messages are pulled out and passed via --append-system-prompt.
+    multi-turn history is rendered as a Human/Assistant transcript.
+
+    System messages are folded into the *user turn* rather than passed via
+    --append-system-prompt: the CLI's built-in agent prompt reliably overrides
+    appended system prompts (it treats the task as "implement this" and emits
+    code/tool-calls instead of the requested structured output), but it weights
+    the user message heavily. Folding the role instructions into the prompt body
+    — together with tools disabled in `_command` — makes the CLI behave as the
+    text-completion endpoint the Dial System expects. The returned system is
+    always None so the caller never adds --append-system-prompt.
     """
     system_parts = [m["content"] for m in messages if m.get("role") == "system"]
     convo = [m for m in messages if m.get("role") != "system"]
 
     if len(convo) == 1 and convo[0].get("role") == "user":
-        prompt = convo[0]["content"]
+        body = convo[0]["content"]
     else:
         lines = []
         for m in convo:
             label = "Assistant" if m.get("role") == "assistant" else "Human"
             lines.append(f"{label}: {m['content']}")
-        prompt = "\n\n".join(lines)
+        body = "\n\n".join(lines)
 
-    system = "\n\n".join(system_parts) if system_parts else None
-    return prompt, system
+    if not system_parts:
+        return body, None
+
+    system = "\n\n".join(system_parts)
+    prompt = f"{system}\n\n=== INPUT ===\n{body}{_RESPONSE_CONTRACT}"
+    return prompt, None
 
 
 class ClaudeCodeAdapter(ProviderAdapter):
@@ -95,7 +120,14 @@ class ClaudeCodeAdapter(ProviderAdapter):
         if output_format == "stream-json":
             # The CLI requires --verbose for stream-json in print mode.
             cmd.append("--verbose")
+        # Disable all tools: run as a pure text-completion endpoint. With tools
+        # enabled the agent attempts Write/Edit (denied under --max-turns 1) and
+        # the run ends in error_max_turns instead of returning the answer text.
+        cmd.extend(["--tools", ""])
         if system:
+            # Retained for direct callers that still pass a system prompt;
+            # `_build_prompt` now folds system into the user turn and returns
+            # None, so this branch does not fire on the normal path.
             cmd.extend(["--append-system-prompt", system])
         cmd.extend(self._extra_args)
         return cmd
@@ -147,11 +179,14 @@ class ClaudeCodeAdapter(ProviderAdapter):
             ) from exc
 
         err_text = stderr.decode(errors="replace")
+        out_text = stdout.decode(errors="replace")
         if proc.returncode != 0:
-            self._note_rate_limit(err_text)
+            # The CLI often writes its error JSON to stdout (not stderr) and still
+            # exits non-zero, so include a stdout tail to make the cause visible.
+            self._note_rate_limit(f"{err_text} {out_text}")
+            detail = err_text.strip() or out_text[-_ERROR_TAIL_CHARS:]
             raise ProviderError(
-                f"Claude Code CLI exited with code {proc.returncode}: "
-                f"{err_text[-_ERROR_TAIL_CHARS:]}"
+                f"Claude Code CLI exited with code {proc.returncode}: {detail}"
             )
 
         try:
