@@ -1,0 +1,90 @@
+{
+  "workflow_overview": [
+    {
+      "workflow_id": "scaffold",
+      "description": "set up a new project folder structure"
+    },
+    {
+      "workflow_id": "init",
+      "description": "add PDD to an existing project (auto-detects stack and conventions)"
+    },
+    {
+      "workflow_id": "context",
+      "description": "write or update context files (`project.md`, `conventions.md`, `decisions.md`)"
+    },
+    {
+      "workflow_id": "research",
+      "description": "explore a problem space, evaluate approaches, and decide what to build"
+    },
+    {
+      "workflow_id": "plan",
+      "description": "decompose a feature into phases and a prompt chain strategy"
+    },
+    {
+      "workflow_id": "prompts",
+      "description": "generate well-structured feature prompts"
+    },
+    {
+      "workflow_id": "update",
+      "description": "improve or refactor an existing prompt"
+    },
+    {
+      "workflow_id": "review",
+      "description": "verify and review AI-generated output before committing (includes automated quality checks)"
+    },
+    {
+      "workflow_id": "eval",
+      "description": "run prompt evaluations and track quality over time"
+    }
+  ],
+  "transitions": [
+    {
+      "just_finished": "**Scaffold**",
+      "suggest_next": "-> Context: *\"Structure is ready. Want to write `pdd/context/project.md`?\"*"
+    },
+    {
+      "just_finished": "**Init**",
+      "suggest_next": "-> Context: *\"PDD structure is ready. Run `/project:pdd-context` to fill in your context files; I'll use what I detected as a starting point.\"*"
+    },
+    {
+      "just_finished": "**Context**",
+      "suggest_next": "-> Research or Plan: *\"Context is set. Before writing prompts, want to research the problem space or plan the implementation?\"*"
+    },
+    {
+      "just_finished": "**Research** - adopt/extend/compose",
+      "suggest_next": "-> Help install/configure, or create a prompt adapting the solution"
+    },
+    {
+      "just_finished": "**Research** - build",
+      "suggest_next": "-> Plan: *\"Nothing existing fits. Let's plan the implementation.\"*"
+    },
+    {
+      "just_finished": "**Plan**",
+      "suggest_next": "-> Prompts: *\"Plan is set. Ready to write the first prompt? Start with Phase 1.\"*"
+    },
+    {
+      "just_finished": "**Prompts**",
+      "suggest_next": "-> Run the prompt 2 to 3 times, then -> Review: *\"Run this prompt, then `/project:pdd-review` to verify and review the output.\"* For critical prompts, create a Level 1 eval first."
+    },
+    {
+      "just_finished": "**Update**",
+      "suggest_next": "-> Re-run the prompt, then -> Review: *\"Try the updated prompt and run `/project:pdd-review` on the output.\"*"
+    },
+    {
+      "just_finished": "**Review** - issues found",
+      "suggest_next": "-> Fix code, or -> Update if the prompt needs work"
+    },
+    {
+      "just_finished": "**Review** - looks good",
+      "suggest_next": "-> Commit both prompt and output. -> Eval: *\"Consider running `/project:pdd-eval` to track this prompt's quality over time.\"*"
+    },
+    {
+      "just_finished": "**Eval** - passes",
+      "suggest_next": "-> Level up the eval if 5 or more runs, or continue to next feature"
+    },
+    {
+      "just_finished": "**Eval** - fails",
+      "suggest_next": "-> Update: *\"These criteria failed. Fix the prompt first.\"*"
+    }
+  ]
+}

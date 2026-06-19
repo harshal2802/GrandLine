@@ -1,0 +1,42 @@
+{
+  "providers": [
+    {
+      "id": "claude",
+      "label": "Claude Code",
+      "root": "providers/claude",
+      "compatibility_paths": [
+        ".claude-plugin",
+        "commands",
+        "hooks",
+        "skills"
+      ]
+    },
+    {
+      "id": "copilot",
+      "label": "GitHub Copilot",
+      "root": "providers/copilot",
+      "compatibility_paths": [
+        "copilot"
+      ]
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "root": "providers/codex",
+      "compatibility_paths": [
+        ".agents/plugins/marketplace.json",
+        "plugins/pdd-skill"
+      ]
+    },
+    {
+      "id": "antigravity",
+      "label": "Google Antigravity",
+      "root": "providers/antigravity",
+      "compatibility_paths": [
+        "GEMINI.md",
+        "skills",
+        "workflows"
+      ]
+    }
+  ]
+}
