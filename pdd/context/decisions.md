@@ -1,6 +1,14 @@
 # GrandLine — Architectural Decisions
 
-**Last updated**: 2026-05-07
+**Last updated**: 2026-06-19
+
+---
+
+## Decision: claude_code provider folds the role prompt into the user turn and disables tools
+**Date**: 2026-06-19
+**What was decided**: The `claude_code` Dial System adapter (`app/dial_system/adapters/claude_code.py`) no longer passes each crew role's system prompt via `--append-system-prompt`. Instead `_build_prompt` folds the system instructions into the *user turn* (`"{system}\n\n=== INPUT ===\n{body}{_RESPONSE_CONTRACT}"`) and returns `system=None`, and `_command` always appends `--tools ""` to disable all CLI tools. A module-level `_RESPONSE_CONTRACT` reminder ("non-interactive completion endpoint, no tools/files, return only the requested output, no preamble/fences, put code inside the requested JSON field") is appended whenever a system prompt is present; pure single-user and multi-turn calls (no system message) pass through unchanged. The adapter's `--max-turns` default stays 1. Scope is adapter-only — crew prompts, the Dial router, guards, the pipeline graph, and the other providers (`anthropic`/`openai`/`ollama`) are untouched. Affected unit tests in `tests/test_dial_claude_code_adapter.py` were updated (`test_system_message_folded_into_user_turn`, `test_complete_builds_expected_command`).
+**Why**: The Claude Code CLI is an agentic coding tool, not a text-completion API. Dialing every crew role to `claude_code` failed at PLANNING two ways, both reproduced against the real CLI (v2.1.170, `sonnet`): (1) the model reached for the **Write** tool, which is denied under `--max-turns 1` → `error_max_turns` → exit 1 → "All providers exhausted for role captain"; (2) the CLI's built-in agent system prompt **overrode** the appended role prompt, so the model returned prose/```python code / a `{"filename","content"}` file-shaped object instead of the required `{"phases":...}` / `{"files":...}` JSON → `PLAN_PARSE_FAILED`. A reproduction harness measured 0/5 reliability for the append-system-prompt approach vs **5/5 (Captain) and 3/3 (Shipwright)** when the role prompt is folded into the user turn and tools are disabled — the CLI weights the user message far more than appended system prompts. This makes a key-free `claude_code` voyage actually run end-to-end (PLANNING→…→COMPLETED). See [pdd/prompts/fixes/claude-code-completion-contract.md](pdd/prompts/fixes/claude-code-completion-contract.md).
+**Don't suggest**: reverting to `--append-system-prompt` for this provider (the agent prompt overrides it), `--disallowedTools` instead of `--tools ""` (the model still attempts Write and hits max-turns), raising `--max-turns` (tools are off; one turn is a clean completion), changing crew prompts or `strip_fences` to tolerate prose/wrong-schema output (fix the provider, not every parser), folding for the other providers (only the CLI needs it), removing the now-dead `if system:` branch in `_command` (kept for direct callers / signature stability).
 
 ---
 
