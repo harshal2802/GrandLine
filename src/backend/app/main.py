@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import ConnectionPool, Redis
 
 from app.api.v1.router import v1_router
+from app.browser.factory import create_browser_backend
 from app.core.config import settings
 from app.core.middleware import DefaultDenyMiddleware
 from app.den_den_mushi.mushi import DenDenMushi
@@ -63,6 +64,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.deployment_backend = InProcessDeploymentBackend()
 
+    app.state.browser_backend = create_browser_backend(settings)
+
     # Process-local registry of in-flight pipeline tasks. Keyed by voyage_id.
     # Multi-worker deployments are out of scope for v1 (single-worker fleet).
     pipeline_tasks: dict[uuid.UUID, asyncio.Task[None]] = {}
@@ -85,6 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
 
     await app.state.deployment_backend.close()
+    await app.state.browser_backend.close()
     await app.state.git_service.cleanup_all()
     await git_backend.close()
     await app.state.execution_service.cleanup_all()

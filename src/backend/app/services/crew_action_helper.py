@@ -56,6 +56,8 @@ class CrewActionType(str, enum.Enum):
     # User interventions (Phase 17).
     CONTEXT_INJECTED = "context_injected"
     PHASE_REDIRECTED = "phase_redirected"
+    # Bedside Browser (Phase 23) — Doctor browser-in-the-loop verification.
+    BROWSER_CHECK_RUN = "browser_check_run"
 
 
 def record_action(

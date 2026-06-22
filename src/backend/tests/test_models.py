@@ -3,6 +3,7 @@
 from sqlalchemy import inspect
 
 from app.models import Base
+from app.models.browser_check import BrowserCheck
 from app.models.build_artifact import BuildArtifact
 from app.models.crew_action import CrewAction
 from app.models.deployment import Deployment
@@ -34,6 +35,7 @@ def test_all_models_registered_in_metadata() -> None:
         "deployments",
         "log_book_entries",
         "standing_orders",
+        "browser_checks",
     }
     assert expected == table_names
 
@@ -313,3 +315,30 @@ def test_deployment_composite_index() -> None:
     table = Deployment.__table__
     index_names = {idx.name for idx in table.indexes}
     assert "ix_deployments_voyage_tier_created" in index_names
+
+
+def test_browser_check_table_columns() -> None:
+    mapper = inspect(BrowserCheck)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "voyage_id",
+        "phase_number",
+        "url",
+        "passed",
+        "screenshot_ref",
+        "console_errors",
+        "failed_assertions",
+        "created_at",
+    }
+
+
+def test_browser_check_voyage_id_indexed() -> None:
+    col = BrowserCheck.__table__.c.voyage_id
+    assert col.index is True
+
+
+def test_browser_check_console_errors_jsonb() -> None:
+    col = BrowserCheck.__table__.c.console_errors
+    assert col.type.__class__.__name__ == "JSONB"
+    assert col.nullable is False

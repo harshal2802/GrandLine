@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     execution_network_enabled: bool = False
     execution_gvisor_runtime: str = "runsc"
 
+    # Bedside Browser (Phase 23): the Doctor's browser-in-the-loop verification
+    # backend. "null" (default) is deterministic and browser-free (CI-safe);
+    # "playwright" opts into a real headless browser (Playwright is an optional,
+    # opt-in dependency — NOT in requirements.txt). Env: GRANDLINE_BROWSER_BACKEND.
+    browser_backend: str = "null"
+
     # Git Integration
     git_sandbox_image: str = "bitnami/git:latest"
     git_sandbox_memory_limit: str = "512m"
