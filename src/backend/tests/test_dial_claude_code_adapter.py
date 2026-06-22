@@ -108,15 +108,21 @@ class TestBuildPrompt:
         assert prompt == "Hello"
         assert system is None
 
-    def test_system_messages_extracted(self) -> None:
+    def test_system_message_folded_into_user_turn(self) -> None:
+        # System instructions are folded into the prompt body (not passed via
+        # --append-system-prompt, which the CLI's agent prompt overrides), so
+        # the returned system is None and the role contract rides in the prompt.
         prompt, system = _build_prompt(
             [
                 {"role": "system", "content": "Be brief."},
                 {"role": "user", "content": "Hello"},
             ]
         )
-        assert prompt == "Hello"
-        assert system == "Be brief."
+        assert system is None
+        assert "Be brief." in prompt
+        assert "=== INPUT ===" in prompt
+        assert "Hello" in prompt
+        assert "RESPONSE FORMAT (mandatory)" in prompt
 
     def test_multi_turn_rendered_as_transcript(self) -> None:
         prompt, _ = _build_prompt(
@@ -176,8 +182,15 @@ class TestClaudeCodeAdapter:
         assert cmd[cmd.index("--output-format") + 1] == "json"
         assert cmd[cmd.index("--model") + 1] == "claude-sonnet-4-20250514"
         assert cmd[cmd.index("--max-turns") + 1] == "2"
-        assert cmd[cmd.index("--append-system-prompt") + 1] == "Be brief."
+        # Tools disabled; system folded into the user turn (no --append-system-prompt).
+        assert cmd[cmd.index("--tools") + 1] == ""
+        assert "--append-system-prompt" not in cmd
         assert cmd[-2:] == ["--permission-mode", "plan"]
+
+        # The system instruction reaches the model folded into the stdin prompt.
+        folded = proc.communicate_input.decode()
+        assert "Be brief." in folded
+        assert "Hello" in folded
 
         env = captured["kwargs"]["env"]
         assert env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "100"
