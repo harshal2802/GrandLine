@@ -21,7 +21,14 @@ export const DIAL_ROLES: readonly CrewRole[] = [
   "helmsman",
 ];
 
-export type RoleProviderConfig = { provider: string; model: string };
+export type RoleProviderConfig = {
+  provider: string;
+  model: string;
+  // C1: a per-role behavioral knob for the `claude_code` provider, carried inside
+  // the role's `role_mapping` entry (role_mapping is JSONB; the backend resolver
+  // tolerates the extra key). Bounded 1–10; absent for non-claude_code roles.
+  max_turns?: number;
+};
 export type FallbackEntry = string | { provider: string; model?: string };
 
 export type DialConfig = {
