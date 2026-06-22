@@ -13,6 +13,7 @@ import { ConnectionState } from "./ConnectionState";
 import { PlaybackControls } from "./PlaybackControls";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { CommandPalette } from "./CommandPalette";
+import { FleetSwitcher } from "./FleetSwitcher";
 import { HelpDialog } from "./HelpDialog";
 import { InterventionControls } from "./InterventionControls";
 import { Toaster } from "./Toaster";
@@ -40,6 +41,7 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
   useVoyageStatus(voyageId);
   const { reconnect } = useVoyageStream(voyageId);
   const focusMode = useUiStore((s) => s.focusMode);
+  const toggleFleet = useUiStore((s) => s.toggleFleet);
   useFailoverToasts();
 
   return (
@@ -71,6 +73,14 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={toggleFleet}
+            className="rounded-md border border-ocean-700 px-2.5 py-1.5 text-sm text-ocean-200 hover:bg-ocean-800"
+            aria-label="Open Fleet Switcher"
+            title="Switch voyage (g f)"
+          >
+            ⛵ Fleet
+          </button>
           {voyageId && <InterventionControls voyageId={voyageId} />}
           <ConnectionState onReconnect={reconnect} />
         </div>
@@ -88,6 +98,7 @@ export function DeckShell({ children }: { children: React.ReactNode }) {
       {voyageId && <PlaybackControls />}
       <DetailsDrawer />
       <CommandPalette />
+      <FleetSwitcher />
       <HelpDialog />
       <Toaster />
     </div>

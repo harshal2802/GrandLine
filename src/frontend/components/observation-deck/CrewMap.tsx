@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
 import { useVoyageStore } from "@/stores/voyage";
 import { useFocusStore } from "@/stores/focus";
+import { useTrackDeckView } from "@/hooks/useTrackDeckView";
 import { CREW_ROLES, type CrewRole, type EventEnvelope } from "@/lib/types";
 import { EmptyState } from "./EmptyState";
 
@@ -47,6 +48,7 @@ function nodeOf(role: CrewRole): Node | undefined {
 }
 
 export function CrewMap() {
+  useTrackDeckView("crew-map");
   const events = useActiveVoyageEvents();
   const activeId = useVoyageStore((s) => s.activeVoyageId);
   const setHoveredCrew = useFocusStore((s) => s.setHoveredCrew);

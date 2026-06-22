@@ -5,6 +5,7 @@ import { useVoyages } from "@/hooks/useVoyages";
 import { usePlaybackStore } from "@/stores/playback";
 import { useVoyageStore } from "@/stores/voyage";
 import { useDerivedState } from "@/hooks/useDerivedState";
+import { useTrackDeckView } from "@/hooks/useTrackDeckView";
 import type { VoyageListItem, VoyageStatus } from "@/lib/types";
 import { SeaChartCard } from "./SeaChartCard";
 import { EmptyState } from "./EmptyState";
@@ -41,6 +42,7 @@ export function columnForVoyage(
 }
 
 export function SeaChart() {
+  useTrackDeckView("sea-chart");
   const router = useRouter();
   const params = useSearchParams();
 

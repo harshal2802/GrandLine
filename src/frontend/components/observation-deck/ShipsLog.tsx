@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCrewActions } from "@/hooks/useCrewActions";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
 import { useFocusStore } from "@/stores/focus";
-import { readPref, writePref } from "@/lib/preferences";
+import { useDeckStateStore } from "@/stores/deckState";
+import { useTrackDeckView } from "@/hooks/useTrackDeckView";
 import {
   applyFilters,
   EMPTY_FILTERS,
@@ -18,12 +19,13 @@ import {
 import { CREW_ROLES } from "@/lib/types";
 import { EmptyState } from "./EmptyState";
 
-const FILTERS_VERSION = 1;
 const MAX_RENDER = 500; // soft virtualization cap
 
 export function ShipsLog() {
   const params = useSearchParams();
   const voyageId = params.get("voyage");
+
+  useTrackDeckView("ships-log");
 
   const { data, isLoading, error, fetchNextPage, hasNextPage } = useCrewActions({ voyageId });
   const events = useActiveVoyageEvents();
@@ -32,16 +34,52 @@ export function ShipsLog() {
   const hoveredPhase = useFocusStore((s) => s.hoveredPhase);
   const hoveredCrew = useFocusStore((s) => s.hoveredCrew);
 
-  const [filters, setFilters] = useState<LogFilters>(EMPTY_FILTERS);
-  const [groupByPhase, setGroupByPhase] = useState(false);
+  // Per-voyage deck state (Phase 24): filters + group-by-phase + scroll are kept
+  // per voyage and persisted, so switching voyages is lossless. Subscribe to the
+  // active voyage's persisted slice so a switch re-reads the right state.
+  const deck = useDeckStateStore((s) =>
+    voyageId ? s.byVoyage[voyageId] : undefined,
+  );
+  const filters = deck?.logFilters ?? EMPTY_FILTERS;
+  const groupByPhase = deck?.groupByPhase ?? false;
 
-  // Persisted filters (versioned localStorage).
-  useEffect(() => {
-    setFilters(readPref<LogFilters>("logFilters", FILTERS_VERSION, EMPTY_FILTERS));
-  }, []);
-  useEffect(() => {
-    writePref("logFilters", FILTERS_VERSION, filters);
-  }, [filters]);
+  const setFilters = useCallback(
+    (next: LogFilters | ((f: LogFilters) => LogFilters)) => {
+      if (!voyageId) return;
+      const current = useDeckStateStore.getState().getDeckState(voyageId).logFilters;
+      const resolved = typeof next === "function" ? next(current) : next;
+      useDeckStateStore.getState().setLogFilters(voyageId, resolved);
+    },
+    [voyageId],
+  );
+
+  const setGroupByPhase = useCallback(
+    (next: boolean | ((g: boolean) => boolean)) => {
+      if (!voyageId) return;
+      const current = useDeckStateStore.getState().getDeckState(voyageId).groupByPhase;
+      const resolved = typeof next === "function" ? next(current) : next;
+      useDeckStateStore.getState().setGroupByPhase(voyageId, resolved);
+    },
+    [voyageId],
+  );
+
+  // Restore + persist the ships-log scroll position per voyage.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const restoreScroll = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollRef.current = el;
+      if (el && voyageId) {
+        const top = useDeckStateStore.getState().getDeckState(voyageId).scroll["ships-log"];
+        if (typeof top === "number") el.scrollTop = top;
+      }
+    },
+    [voyageId],
+  );
+  const onScroll = useCallback(() => {
+    if (voyageId && scrollRef.current) {
+      useDeckStateStore.getState().setScroll(voyageId, "ships-log", scrollRef.current.scrollTop);
+    }
+  }, [voyageId]);
 
   const rows = useMemo(() => {
     const restRows = (data?.pages.flatMap((p) => p.items) ?? []).map(rowFromCrewAction);
@@ -115,7 +153,11 @@ export function ShipsLog() {
       </div>
 
       {/* Log */}
-      <div className="flex-1 overflow-auto rounded-lg border border-ocean-800 bg-ocean-900/30">
+      <div
+        ref={restoreScroll}
+        onScroll={onScroll}
+        className="flex-1 overflow-auto rounded-lg border border-ocean-800 bg-ocean-900/30"
+      >
         {filtered.length === 0 ? (
           <EmptyState title="No matching entries" hint="Adjust filters or wait for the crew to act." />
         ) : (
