@@ -62,9 +62,7 @@ class TestShouldTrigger:
 
     def test_labeled_with_label_triggers(self) -> None:
         with patch("app.services.trigger_service.settings.trigger_label", "grandline"):
-            assert TriggerService.should_trigger(
-                _payload(action="labeled", labels=["grandline"])
-            )
+            assert TriggerService.should_trigger(_payload(action="labeled", labels=["grandline"]))
 
     def test_missing_label_ignored(self) -> None:
         with patch("app.services.trigger_service.settings.trigger_label", "grandline"):
@@ -82,9 +80,7 @@ class TestResolveTriggerUser:
     async def test_unconfigured_email_raises(self) -> None:
         session = _mock_session()
         service = TriggerService(session)
-        with patch(
-            "app.services.trigger_service.settings.trigger_default_user_email", None
-        ):
+        with patch("app.services.trigger_service.settings.trigger_default_user_email", None):
             with pytest.raises(TriggerError) as exc:
                 await service.resolve_trigger_user()
         assert exc.value.code == "TRIGGER_USER_UNCONFIGURED"
@@ -171,9 +167,7 @@ class TestIngestGithubIssue:
         service = TriggerService(session)
         long_title = "x" * 400
 
-        voyage = await service.ingest_github_issue(
-            _payload(title=long_title), self._user()
-        )
+        voyage = await service.ingest_github_issue(_payload(title=long_title), self._user())
 
         assert len(voyage.title) == 255
 
@@ -182,9 +176,7 @@ class TestIngestGithubIssue:
         session = _mock_session()
         service = TriggerService(session)
 
-        voyage = await service.ingest_github_issue(
-            _payload(clone_url=None), self._user()
-        )
+        voyage = await service.ingest_github_issue(_payload(clone_url=None), self._user())
 
         assert voyage.target_repo == "acme/widgets"
 
