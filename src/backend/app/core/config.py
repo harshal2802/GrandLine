@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     git_author_name: str = "GrandLine Crew"
     git_author_email: str = "crew@grandline.dev"
     github_api_token: str = ""
+    # Return Bottle (Phase 22): the fixed GitHub API host the completion-time
+    # write-back contacts. ALWAYS this host — never one derived from a voyage's
+    # untrusted `origin` payload. Env only; reuses `github_api_token` for auth.
+    github_api_base_url: str = "https://api.github.com"
 
     # Message in a Bottle (Phase 21): external triggers via signed webhook.
     # The shared secret GitHub signs webhook deliveries with (X-Hub-Signature-256).

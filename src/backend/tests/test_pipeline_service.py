@@ -478,6 +478,39 @@ class TestPublishFailureIsSwallowed:
         await service.start(voyage, USER_ID, "task")
 
 
+class TestReturnBottleHook:
+    @pytest.mark.asyncio
+    async def test_return_bottle_invoked_on_completion(
+        self,
+        service: PipelineService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _patch_graph(monkeypatch, _happy_final_state())
+        report = AsyncMock(return_value={"issue_commented": False, "log_book_recorded": False})
+        monkeypatch.setattr(
+            "app.services.return_bottle_service.ReturnBottleService.report",
+            report,
+        )
+        voyage = _mock_voyage()
+        await service.start(voyage, USER_ID, "task")
+        report.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_return_bottle_failure_does_not_fail_pipeline(
+        self,
+        service: PipelineService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _patch_graph(monkeypatch, _happy_final_state())
+        monkeypatch.setattr(
+            "app.services.return_bottle_service.ReturnBottleService.report",
+            AsyncMock(side_effect=RuntimeError("bottle lost at sea")),
+        )
+        voyage = _mock_voyage()
+        # A Return Bottle failure must NOT raise — the voyage already completed.
+        await service.start(voyage, USER_ID, "task")
+
+
 class TestPipelineStateShape:
     def test_initial_state_has_all_required_fields(self) -> None:
         from app.crew.pipeline_graph import PipelineState  # noqa: PLC0415

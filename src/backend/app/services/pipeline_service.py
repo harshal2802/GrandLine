@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import settings
 from app.crew.pipeline_graph import (
     PipelineContext,
     PipelineState,
@@ -56,6 +57,7 @@ from app.services.pipeline_guards import (
     PipelineError,
     require_can_enter_planning,
 )
+from app.services.return_bottle_service import ReturnBottleService
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +218,27 @@ class PipelineService:
         await publish_crew_action_recorded(self._mushi, voyage.id, action)
 
         logger.info("Pipeline completed for voyage %s in %.2fs", voyage.id, duration)
+
+        # Return Bottle (Phase 22): close the loop. Best-effort outreach AFTER the
+        # PIPELINE_COMPLETED commit — posts a summary back to the originating issue
+        # (Phase 21 `origin`) and records a Log Book summary for the repo. A failure
+        # here must NEVER fail or roll back an already-completed voyage.
+        try:
+            phase_count = final_state.get("build_artifact_count") or None
+            fresh = await self._session.get(Voyage, voyage.id)
+            target = fresh if fresh is not None else voyage
+            await ReturnBottleService(self._session, settings).report(
+                target,
+                deployment_url=deployment_url,
+                duration_seconds=duration,
+                phase_count=phase_count,
+            )
+        except Exception:
+            logger.warning(
+                "Return Bottle failed for completed voyage %s (ignored)",
+                voyage.id,
+                exc_info=True,
+            )
 
     async def pause(self, voyage: Voyage) -> None:
         if voyage.status in _TERMINAL_STATUSES:
