@@ -10,6 +10,7 @@ from app.api.v1.execution import router as execution_router
 from app.api.v1.git import router as git_router
 from app.api.v1.health import router as health_router
 from app.api.v1.helmsman import router as helmsman_router
+from app.api.v1.integrations import router as integrations_router
 from app.api.v1.log_book import router as log_book_router
 from app.api.v1.navigator import router as navigator_router
 from app.api.v1.observation_deck import router as observation_deck_router
@@ -44,3 +45,4 @@ v1_router.include_router(sea_chest_router)
 v1_router.include_router(triggers_router)
 v1_router.include_router(bedside_browser_router)
 v1_router.include_router(cabin_router)
+v1_router.include_router(integrations_router)

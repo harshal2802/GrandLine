@@ -5,8 +5,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import get_authorized_voyage, get_current_user, get_git_service
+from app.core.config import settings
+from app.models import get_db
 from app.models.user import User
 from app.models.voyage import Voyage
 from app.schemas.git import (
@@ -27,8 +30,47 @@ from app.schemas.git import (
     GitRepoInfo,
 )
 from app.services.git_service import GitError, GitService
+from app.services.sea_chest_service import SeaChestService
 
 router = APIRouter(prefix="/voyages/{voyage_id}/git", tags=["git"])
+
+# Per-user GitHub (Phase A3): the GitHub identity resolved from the caller's Sea
+# Chest — ``(token, login)`` when connected, else ``(None, None)`` so git ops fall
+# back to the env ``github_api_token`` + configured author identity. The login is
+# derived from the credential's non-secret ``@login`` label (set at connect time).
+GithubIdentity = tuple[str | None, str | None]
+
+
+def _resolve_identity(github_identity: object) -> GithubIdentity:
+    """Normalize the injected identity to ``(token, login)``.
+
+    Under FastAPI the dependency injects a real ``(token, login)`` tuple. In direct
+    unit-test calls the parameter is left at its ``Depends(...)`` default (not a
+    tuple) — treat that as "not connected" so git ops fall back to the env token.
+    """
+    if isinstance(github_identity, tuple) and len(github_identity) == 2:
+        return github_identity
+    return (None, None)
+
+
+async def get_github_identity(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> GithubIdentity:
+    """Resolve the caller's per-user GitHub token + login from the Sea Chest.
+
+    Returns ``(None, None)`` when the user has not connected GitHub — callers then
+    fall back to the env token (today's behavior). The token is consumed internally
+    by GitService and is NEVER returned to the client.
+    """
+    sea_chest = SeaChestService(session, settings)
+    token = await sea_chest.reveal(user.id, "github")
+    if token is None:
+        return (None, None)
+    credential = await sea_chest.status_for(user.id, "github")
+    label = credential.label if credential else None
+    login = label.lstrip("@") if label else None
+    return (token, login or None)
 
 
 def _handle_git_error(exc: GitError) -> HTTPException:
@@ -66,6 +108,7 @@ async def clone_repo(
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
     git_service: GitService = Depends(get_git_service),
+    github_identity: GithubIdentity = Depends(get_github_identity),
 ) -> GitRepoInfo:
     repo_url = body.repo_url or voyage.target_repo
     if not repo_url:
@@ -78,8 +121,9 @@ async def clone_repo(
                 }
             },
         )
+    token, _login = _resolve_identity(github_identity)
     try:
-        return await git_service.clone_repo(voyage_id, user.id, repo_url)
+        return await git_service.clone_repo(voyage_id, user.id, repo_url, token=token)
     except GitError as exc:
         raise _handle_git_error(exc) from exc
 
@@ -136,9 +180,11 @@ async def push_branch(
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
     git_service: GitService = Depends(get_git_service),
+    github_identity: GithubIdentity = Depends(get_github_identity),
 ) -> GitPushInfo:
+    token, _login = _resolve_identity(github_identity)
     try:
-        return await git_service.push(voyage_id, user.id, body.branch)
+        return await git_service.push(voyage_id, user.id, body.branch, token=token)
     except GitError as exc:
         raise _handle_git_error(exc) from exc
 
@@ -150,10 +196,19 @@ async def create_pull_request(
     user: User = Depends(get_current_user),
     voyage: Voyage = Depends(get_authorized_voyage),
     git_service: GitService = Depends(get_git_service),
+    github_identity: GithubIdentity = Depends(get_github_identity),
 ) -> GitPRInfo:
+    token, login = _resolve_identity(github_identity)
     try:
         return await git_service.create_pr(
-            voyage_id, user.id, body.title, body.body, body.head_branch, body.base_branch
+            voyage_id,
+            user.id,
+            body.title,
+            body.body,
+            body.head_branch,
+            body.base_branch,
+            token=token,
+            author_login=login,
         )
     except GitError as exc:
         raise _handle_git_error(exc) from exc
