@@ -1,0 +1,123 @@
+{
+  "quick_start": "For most features, you only need three commands: **Context -> Prompts -> Review**. Add Research, Plan, and Eval for complex or critical features.",
+  "scenario_routes": [
+    {
+      "goal": "Start a brand new project",
+      "workflow_ids": [
+        "scaffold",
+        "context"
+      ]
+    },
+    {
+      "goal": "Add PDD to an existing codebase",
+      "workflow_ids": [
+        "init",
+        "context"
+      ]
+    },
+    {
+      "goal": "Build a new feature (complex)",
+      "workflow_ids": [
+        "context",
+        "research",
+        "plan",
+        "prompts",
+        "review"
+      ]
+    },
+    {
+      "goal": "Build a new feature (simple)",
+      "workflow_ids": [
+        "context",
+        "prompts",
+        "review"
+      ]
+    },
+    {
+      "goal": "Fix a prompt that isn't working",
+      "workflow_ids": [
+        "update"
+      ]
+    },
+    {
+      "goal": "Check if my project setup is complete",
+      "workflow_ids": [
+        "status"
+      ]
+    },
+    {
+      "goal": "Track prompt quality over time",
+      "workflow_ids": [
+        "eval"
+      ]
+    }
+  ],
+  "command_details": {
+    "scaffold": {
+      "when_to_use": "Starting a brand new project from scratch",
+      "inputs": "Project name (optional)",
+      "produces": "Folder structure with context stubs",
+      "next_step_template": "{context}"
+    },
+    "init": {
+      "when_to_use": "Adding PDD to a project that already has code",
+      "inputs": "Existing project directory",
+      "produces": "PDD folders plus auto-detected context",
+      "next_step_template": "{context}"
+    },
+    "context": {
+      "when_to_use": "Before writing prompts, or when the project changes",
+      "inputs": "Answers to context questions",
+      "produces": "`pdd/context/project.md`, `conventions.md`, `decisions.md`",
+      "next_step_template": "{research} or {prompts}"
+    },
+    "research": {
+      "when_to_use": "Before building to clarify the problem and evaluate approaches",
+      "inputs": "Problem description or feature idea",
+      "produces": "Research summary plus approach recommendation",
+      "next_step_template": "{plan} or {prompts}"
+    },
+    "plan": {
+      "when_to_use": "When a feature spans multiple files, modules, or phases",
+      "inputs": "Feature description plus context files",
+      "produces": "Phased implementation plan with prompt chain strategy",
+      "next_step_template": "{prompts}"
+    },
+    "prompts": {
+      "when_to_use": "When you're ready to write the actual feature prompt",
+      "inputs": "Feature description plus context files",
+      "produces": "Prompt file(s) in `pdd/prompts/features/`",
+      "next_step_template": "Run the prompt, then {review}"
+    },
+    "update": {
+      "when_to_use": "When a prompt isn't producing good results",
+      "inputs": "The failing prompt plus what went wrong",
+      "produces": "Updated prompt file",
+      "next_step_template": "Run the prompt again, then {review}"
+    },
+    "review": {
+      "when_to_use": "When AI generated code and you want to verify it",
+      "inputs": "Generated code, pasted or in files",
+      "produces": "Quality report plus fix suggestions",
+      "next_step_template": "Commit or iterate"
+    },
+    "eval": {
+      "when_to_use": "After committing, to track prompt reliability",
+      "inputs": "Prompt file plus expected outcomes",
+      "produces": "Eval results in `pdd/evals/`",
+      "next_step_template": "Update the prompt if quality drops"
+    },
+    "status": {
+      "when_to_use": "When you want to check project health",
+      "inputs": "None",
+      "produces": "Status report with suggestions",
+      "next_step_template": "Whatever the report recommends"
+    },
+    "help": {
+      "when_to_use": "When you want to see available commands",
+      "inputs": "Command name (optional)",
+      "produces": "This reference",
+      "next_step_template": "Whatever workflow fits"
+    }
+  }
+}

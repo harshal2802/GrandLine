@@ -1,0 +1,13 @@
+{
+  "hooks": [
+    {
+      "matcher": "SessionStart",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "if [ -f pdd/context/project.md ]; then updated=$(grep -i 'last updated' pdd/context/project.md | head -1); if [ -n \"$updated\" ]; then echo \"PDD context exists. $updated — check if anything has changed.\"; else echo \"PDD context exists but has no Last updated date. Consider adding one.\"; fi; elif [ -f context/project.md ]; then updated=$(grep -i 'last updated' context/project.md | head -1); if [ -n \"$updated\" ]; then echo \"PDD context exists (legacy layout). $updated — consider migrating to pdd/ layout (see docs/migration.md).\"; else echo \"PDD context exists (legacy layout) but has no Last updated date. Consider adding one and migrating to pdd/ layout.\"; fi; elif [ -d pdd/prompts/ ] || [ -d pdd/context/ ]; then echo \"PDD project detected but pdd/context/project.md is missing. Run /project:pdd-context to create it.\"; elif [ -d prompts/ ] || [ -d context/ ]; then echo \"PDD project detected (legacy layout) but context/project.md is missing. Run /project:pdd-context to create it, and consider migrating to pdd/ layout (see docs/migration.md).\"; fi"
+        }
+      ]
+    }
+  ]
+}
