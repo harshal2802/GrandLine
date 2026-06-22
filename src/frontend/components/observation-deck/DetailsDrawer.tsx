@@ -6,8 +6,9 @@ import { useDerivedState } from "@/hooks/useDerivedState";
 import { useActiveVoyageEvents } from "@/hooks/useActiveVoyageEvents";
 import { latestDeployment, rollbackDeployment } from "@/lib/deployments";
 import { DialPanel } from "./DialPanel";
+import { ChangesPanel } from "./ChangesPanel";
 
-type Tab = "overview" | "events" | "dial" | "timestamps";
+type Tab = "overview" | "events" | "changes" | "dial" | "timestamps";
 
 export function DetailsDrawer() {
   const drawerVoyageId = usePlaybackStore((s) => s.drawerVoyageId);
@@ -64,7 +65,7 @@ export function DetailsDrawer() {
         </header>
 
         <nav className="flex gap-1 border-b border-ocean-800 px-2 py-2 text-xs">
-          {(["overview", "events", "dial", "timestamps"] as Tab[]).map((t) => (
+          {(["overview", "events", "changes", "dial", "timestamps"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -175,6 +176,8 @@ export function DetailsDrawer() {
               {events.length === 0 && <li className="text-ocean-500">No events yet.</li>}
             </ul>
           )}
+
+          {tab === "changes" && <ChangesPanel voyageId={drawerVoyageId} />}
 
           {tab === "dial" && <DialPanel voyageId={drawerVoyageId} />}
 

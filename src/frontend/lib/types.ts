@@ -85,6 +85,21 @@ export type CrewActionRead = {
   created_at: string;
 };
 
+// A single file the Shipwright produced for a phase (mirrors
+// app/schemas/build_artifact.py BuildArtifactRead). snake_case as the API returns it.
+// Powers the Changes view — the always-available, no-git code browser (Phase A1).
+export type BuildArtifact = {
+  id: string;
+  voyage_id: string;
+  shipwright_run_id: string;
+  phase_number: number;
+  file_path: string;
+  content: string;
+  language: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type Paginated<T> = {
   items: T[];
   nextCursor: string | null;
