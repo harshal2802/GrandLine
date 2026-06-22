@@ -26,9 +26,7 @@ class TestSendReturnBottle:
         from app.api.v1.return_bottle import send_return_bottle
 
         svc = AsyncMock()
-        svc.report = AsyncMock(
-            return_value={"issue_commented": True, "log_book_recorded": True}
-        )
+        svc.report = AsyncMock(return_value={"issue_commented": True, "log_book_recorded": True})
 
         result = await send_return_bottle(_voyage(), svc)
 

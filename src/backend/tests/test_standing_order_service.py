@@ -194,9 +194,7 @@ class TestChart:
 
         added = [c.args[0] for c in session.add.call_args_list]
         dial = next(a for a in added if isinstance(a, DialConfig))
-        assert dial.role_mapping == {
-            "captain": {"provider": "anthropic", "model": "preset-model"}
-        }
+        assert dial.role_mapping == {"captain": {"provider": "anthropic", "model": "preset-model"}}
         assert dial.fallback_chain == {"captain": ["openai"]}
 
     @pytest.mark.asyncio

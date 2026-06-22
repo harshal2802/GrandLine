@@ -49,9 +49,7 @@ async def test_replays_all_events_in_order_and_completes() -> None:
     mushi = AsyncMock()
     mushi.publish = AsyncMock(return_value="1-0")
 
-    replayer = DemoReplayer(
-        mushi, _factory(voyage), VOYAGE_ID, speed=1000, sleep=AsyncMock()
-    )
+    replayer = DemoReplayer(mushi, _factory(voyage), VOYAGE_ID, speed=1000, sleep=AsyncMock())
     result = await replayer.run()
 
     assert result == "completed"
@@ -70,9 +68,7 @@ async def test_cancel_stops_the_replay() -> None:
     mushi = AsyncMock()
     mushi.publish = AsyncMock()
 
-    replayer = DemoReplayer(
-        mushi, _factory(voyage), VOYAGE_ID, speed=1000, sleep=AsyncMock()
-    )
+    replayer = DemoReplayer(mushi, _factory(voyage), VOYAGE_ID, speed=1000, sleep=AsyncMock())
     result = await replayer.run()
 
     assert result == "cancelled"

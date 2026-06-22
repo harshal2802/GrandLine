@@ -206,9 +206,7 @@ class ShipwrightService:
                 # so the agent's NEXT LLM call sees them. Each is applied once per
                 # phase, so a new intervention recorded between iterations is
                 # picked up on the following iteration (#51).
-                drained = await drain_pending_interventions(
-                    self._session, voyage.id, phase_number
-                )
+                drained = await drain_pending_interventions(self._session, voyage.id, phase_number)
                 injected_context.extend(drained.injected_context)
                 if drained.redirect_instruction:
                     redirect_instruction = drained.redirect_instruction

@@ -95,10 +95,7 @@ class TestPostToGithubIssue:
         assert ok is True
         post.assert_awaited_once()
         call = post.call_args
-        assert (
-            call.args[0]
-            == "https://api.github.com/repos/acme/widgets/issues/42/comments"
-        )
+        assert call.args[0] == "https://api.github.com/repos/acme/widgets/issues/42/comments"
         assert call.kwargs["headers"]["Authorization"] == "Bearer ghp_abc"
         assert call.kwargs["headers"]["Accept"] == "application/vnd.github+json"
         assert call.kwargs["json"] == {"body": "hello crew"}
@@ -147,18 +144,14 @@ class TestReport:
     async def test_no_origin_no_comment(self) -> None:
         svc = ReturnBottleService(AsyncMock(), _settings())
         log_book = AsyncMock()
-        result = await svc.report(
-            _voyage(origin=None, target_repo=None), log_book=log_book
-        )
+        result = await svc.report(_voyage(origin=None, target_repo=None), log_book=log_book)
         assert result["issue_commented"] is False
         log_book.record.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_non_github_origin_no_comment(self) -> None:
         svc = ReturnBottleService(AsyncMock(), _settings())
-        result = await svc.report(
-            _voyage(origin={"type": "email"}), log_book=AsyncMock()
-        )
+        result = await svc.report(_voyage(origin={"type": "email"}), log_book=AsyncMock())
         assert result["issue_commented"] is False
 
     @pytest.mark.asyncio
@@ -230,13 +223,9 @@ class TestReport:
         session = AsyncMock()
         svc = ReturnBottleService(session, _settings())
         record = AsyncMock(return_value=MagicMock())
-        with patch(
-            "app.services.return_bottle_service.LogBookService"
-        ) as lb_cls:
+        with patch("app.services.return_bottle_service.LogBookService") as lb_cls:
             lb_cls.return_value.record = record
-            result = await svc.report(
-                _voyage(origin=None, target_repo="acme/widgets")
-            )
+            result = await svc.report(_voyage(origin=None, target_repo="acme/widgets"))
         lb_cls.assert_called_once_with(session)
         record.assert_awaited_once()
         assert result["log_book_recorded"] is True

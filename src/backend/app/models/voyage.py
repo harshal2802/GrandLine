@@ -35,7 +35,7 @@ class Voyage(Base):
     # How the voyage was triggered (a Message in a Bottle). NULL for a manually
     # charted voyage; populated for an externally triggered one (e.g. a GitHub
     # issue webhook). The canonical provenance record Phase 22 reads to reply back.
-    origin: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    origin: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     phase_status: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default="{}", nullable=False
     )
