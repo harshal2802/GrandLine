@@ -12,11 +12,14 @@ from app.models.voyage import Voyage
 from app.schemas.git import (
     GitBranchInfo,
     GitBranchRequest,
+    GitChangedFile,
     GitCloneRequest,
     GitCommitInfo,
     GitCommitRequest,
     GitConflictCheckRequest,
     GitConflictInfo,
+    GitDiff,
+    GitFileContent,
     GitPRInfo,
     GitPRRequest,
     GitPushInfo,
@@ -40,7 +43,7 @@ def _handle_git_error(exc: GitError) -> HTTPException:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": {"code": "DISALLOWED_HOST", "message": msg}},
         )
-    if "NO_TARGET_REPO" in msg or "INVALID_BRANCH_NAME" in msg:
+    if "NO_TARGET_REPO" in msg or "INVALID_BRANCH_NAME" in msg or "INVALID_PATH" in msg:
         return HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": {"code": msg.split(":")[0].strip(), "message": msg}},
@@ -167,6 +170,52 @@ async def get_log(
 ) -> list[GitCommitInfo]:
     try:
         return await git_service.get_log(voyage_id, user.id, branch, limit)
+    except GitError as exc:
+        raise _handle_git_error(exc) from exc
+
+
+@router.get("/changed-files", response_model=list[GitChangedFile])
+async def list_changed_files(
+    voyage_id: uuid.UUID,
+    base: str = "main",
+    head: str = Query(...),
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    git_service: GitService = Depends(get_git_service),
+) -> list[GitChangedFile]:
+    try:
+        return await git_service.list_changed_files(voyage_id, user.id, base, head)
+    except GitError as exc:
+        raise _handle_git_error(exc) from exc
+
+
+@router.get("/diff", response_model=GitDiff)
+async def get_diff(
+    voyage_id: uuid.UUID,
+    base: str = "main",
+    head: str = Query(...),
+    path: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    git_service: GitService = Depends(get_git_service),
+) -> GitDiff:
+    try:
+        return await git_service.diff(voyage_id, user.id, base, head, path=path)
+    except GitError as exc:
+        raise _handle_git_error(exc) from exc
+
+
+@router.get("/file-content", response_model=GitFileContent)
+async def get_file_content(
+    voyage_id: uuid.UUID,
+    ref: str = Query(...),
+    path: str = Query(...),
+    user: User = Depends(get_current_user),
+    voyage: Voyage = Depends(get_authorized_voyage),
+    git_service: GitService = Depends(get_git_service),
+) -> GitFileContent:
+    try:
+        return await git_service.get_file_content(voyage_id, user.id, ref, path)
     except GitError as exc:
         raise _handle_git_error(exc) from exc
 

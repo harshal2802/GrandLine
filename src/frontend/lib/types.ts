@@ -100,6 +100,28 @@ export type BuildArtifact = {
   created_at: string;
 };
 
+// Real git diffs (Phase A2) — mirrors the backend schemas in
+// app/schemas/git.py (GitChangedFile / GitDiff / GitFileContent). snake_case as
+// the API returns it. Surfaced in the Changes view's Diff mode; falls back to
+// the A1 artifacts view when a voyage didn't use git.
+export type GitChangedFile = {
+  path: string;
+  status: string; // A / M / D / R… from `git diff --name-status`
+};
+
+export type GitDiff = {
+  base: string;
+  head: string;
+  path: string | null;
+  unified: string;
+};
+
+export type GitFileContent = {
+  ref: string;
+  path: string;
+  content: string;
+};
+
 export type Paginated<T> = {
   items: T[];
   nextCursor: string | null;

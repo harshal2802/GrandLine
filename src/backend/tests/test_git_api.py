@@ -10,8 +10,11 @@ from fastapi import HTTPException
 
 from app.schemas.git import (
     GitBranchInfo,
+    GitChangedFile,
     GitCommitInfo,
     GitConflictInfo,
+    GitDiff,
+    GitFileContent,
     GitPRInfo,
     GitPushInfo,
     GitRepoInfo,
@@ -85,6 +88,23 @@ def _mock_git_service() -> AsyncMock:
     )
     svc.check_conflicts = AsyncMock(
         return_value=GitConflictInfo(has_conflicts=False, conflicting_files=[])
+    )
+    svc.list_changed_files = AsyncMock(
+        return_value=[
+            GitChangedFile(path="src/main.py", status="M"),
+            GitChangedFile(path="src/new.py", status="A"),
+        ]
+    )
+    svc.diff = AsyncMock(
+        return_value=GitDiff(
+            base="main",
+            head="feat/test",
+            path=None,
+            unified="diff --git a/x b/x\n+added\n",
+        )
+    )
+    svc.get_file_content = AsyncMock(
+        return_value=GitFileContent(ref="feat/test", path="src/main.py", content="print('hi')\n")
     )
     svc.cleanup_branches = AsyncMock()
     return svc
@@ -203,6 +223,88 @@ class TestLogEndpoint:
 
         assert len(result) == 1
         assert result[0].sha == "abc123def456"
+
+
+class TestChangedFilesEndpoint:
+    @pytest.mark.asyncio
+    async def test_returns_changed_files(self) -> None:
+        from app.api.v1.git import list_changed_files
+
+        svc = _mock_git_service()
+        result = await list_changed_files(
+            VOYAGE_ID, "main", "feat/test", _mock_user(), _mock_voyage(), svc
+        )
+
+        assert len(result) == 2
+        assert result[0].path == "src/main.py"
+        assert result[0].status == "M"
+        svc.list_changed_files.assert_awaited_once_with(VOYAGE_ID, USER_ID, "main", "feat/test")
+
+
+class TestDiffEndpoint:
+    @pytest.mark.asyncio
+    async def test_returns_unified_diff(self) -> None:
+        from app.api.v1.git import get_diff
+
+        svc = _mock_git_service()
+        result = await get_diff(
+            VOYAGE_ID, "main", "feat/test", None, _mock_user(), _mock_voyage(), svc
+        )
+
+        assert result.base == "main"
+        assert result.head == "feat/test"
+        assert "+added" in result.unified
+        svc.diff.assert_awaited_once_with(VOYAGE_ID, USER_ID, "main", "feat/test", path=None)
+
+    @pytest.mark.asyncio
+    async def test_passes_path_through(self) -> None:
+        from app.api.v1.git import get_diff
+
+        svc = _mock_git_service()
+        await get_diff(
+            VOYAGE_ID,
+            "main",
+            "feat/test",
+            "src/main.py",
+            _mock_user(),
+            _mock_voyage(),
+            svc,
+        )
+
+        svc.diff.assert_awaited_once_with(
+            VOYAGE_ID, USER_ID, "main", "feat/test", path="src/main.py"
+        )
+
+
+class TestFileContentEndpoint:
+    @pytest.mark.asyncio
+    async def test_returns_file_content(self) -> None:
+        from app.api.v1.git import get_file_content
+
+        svc = _mock_git_service()
+        result = await get_file_content(
+            VOYAGE_ID, "feat/test", "src/main.py", _mock_user(), _mock_voyage(), svc
+        )
+
+        assert result.ref == "feat/test"
+        assert result.path == "src/main.py"
+        assert result.content == "print('hi')\n"
+
+    @pytest.mark.asyncio
+    async def test_invalid_path_400(self) -> None:
+        from app.api.v1.git import get_file_content
+
+        svc = _mock_git_service()
+        svc.get_file_content.side_effect = GitError(
+            "INVALID_PATH: '../etc/passwd' is not a repo-relative path"
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_file_content(
+                VOYAGE_ID, "main", "../etc/passwd", _mock_user(), _mock_voyage(), svc
+            )
+
+        assert exc_info.value.status_code == 400
 
 
 class TestConflictsEndpoint:

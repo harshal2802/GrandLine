@@ -15,8 +15,11 @@ from app.execution.backend import ExecutionBackend
 from app.schemas.execution import ExecutionRequest
 from app.schemas.git import (
     GitBranchInfo,
+    GitChangedFile,
     GitCommitInfo,
     GitConflictInfo,
+    GitDiff,
+    GitFileContent,
     GitPRInfo,
     GitPushInfo,
     GitRepoInfo,
@@ -40,6 +43,12 @@ def _branch_name(crew_member: str, voyage_id: uuid.UUID) -> str:
 def _validate_branch_component(value: str) -> None:
     if not BRANCH_NAME_RE.match(value):
         raise GitError(f"INVALID_BRANCH_NAME: {value!r} contains invalid characters")
+
+
+def _validate_repo_path(path: str) -> None:
+    """Reject paths that try to escape the repo (traversal / absolute)."""
+    if not path or path.startswith("/") or path.startswith("~") or ".." in path.split("/"):
+        raise GitError(f"INVALID_PATH: {path!r} is not a repo-relative path")
 
 
 def _validate_repo_host(repo_url: str, allowed_hosts: frozenset[str]) -> None:
@@ -362,6 +371,81 @@ class GitService:
             has_conflicts=has_conflicts,
             conflicting_files=conflicting_files,
         )
+
+    async def list_changed_files(
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        base: str,
+        head: str,
+    ) -> list[GitChangedFile]:
+        """List files changed between two refs via `git diff --name-status base...head`."""
+        _validate_branch_component(base)
+        _validate_branch_component(head)
+        sandbox_id = self._get_sandbox(voyage_id)
+
+        stdout = await self._run(
+            sandbox_id,
+            f"cd {REPO_PATH} && git diff --name-status"
+            f" {shlex.quote(base)}...{shlex.quote(head)}",
+        )
+
+        files: list[GitChangedFile] = []
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            status = parts[0].strip()
+            # Renames/copies (R100/C75) report two paths — the new path is last.
+            path = parts[-1].strip()
+            files.append(GitChangedFile(path=path, status=status))
+
+        return files
+
+    async def diff(
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        base: str,
+        head: str,
+        *,
+        path: str | None = None,
+    ) -> GitDiff:
+        """Unified diff between two refs — whole-branch or scoped to a single path."""
+        _validate_branch_component(base)
+        _validate_branch_component(head)
+        sandbox_id = self._get_sandbox(voyage_id)
+
+        command = f"cd {REPO_PATH} && git diff {shlex.quote(base)}...{shlex.quote(head)}"
+        if path is not None:
+            _validate_repo_path(path)
+            command += f" -- {shlex.quote(path)}"
+
+        stdout = await self._run(sandbox_id, command)
+
+        return GitDiff(base=base, head=head, path=path, unified=stdout)
+
+    async def get_file_content(
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        ref: str,
+        path: str,
+    ) -> GitFileContent:
+        """Read a file's full content at a ref via `git show ref:path`."""
+        _validate_branch_component(ref)
+        _validate_repo_path(path)
+        sandbox_id = self._get_sandbox(voyage_id)
+
+        stdout = await self._run(
+            sandbox_id,
+            f"cd {REPO_PATH} && git show {shlex.quote(f'{ref}:{path}')}",
+        )
+
+        return GitFileContent(ref=ref, path=path, content=stdout)
 
     async def cleanup_branches(self, voyage_id: uuid.UUID, user_id: uuid.UUID) -> None:
         sandbox_id = self._repos.pop(voyage_id, None)
