@@ -21,7 +21,12 @@ from app.cabin.backend import (
     CabinInfo,
     CabinRunResult,
     CabinStatus,
+    ServiceHandle,
+    ServiceStatus,
 )
+
+# Deterministic base port for Null-allocated service ports (no real bind happens).
+_NULL_BASE_PORT = 8000
 
 
 class _NullCabin:
@@ -41,6 +46,17 @@ class _NullCabin:
         now = datetime.now(UTC)
         self.created_at = now
         self.last_active = now
+        # Long-running services (Phase B0 preview) launched in this Cabin.
+        self.services: dict[str, _NullService] = {}
+
+
+class _NullService:
+    """In-memory record of a long-running service — no secret value stored."""
+
+    def __init__(self, service_id: str, port: int) -> None:
+        self.service_id = service_id
+        self.port = port
+        self.status: ServiceStatus = "running"
 
 
 class NullCabinBackend(CabinBackend):
@@ -116,3 +132,59 @@ class NullCabinBackend(CabinBackend):
 
     async def destroy(self, user_id: uuid.UUID) -> None:
         self._cabins.pop(user_id, None)
+
+    async def start_service(
+        self,
+        user_id: uuid.UUID,
+        command: list[str] | str,
+        *,
+        env: dict[str, str] | None = None,
+        port: int | None = None,
+    ) -> ServiceHandle:
+        cabin = self._cabins.get(user_id)
+        if cabin is None:
+            raise CabinError("NOT_FOUND", "No cabin for user")
+        cabin.last_active = datetime.now(UTC)
+        # Deterministic port allocation when none is requested (no real bind).
+        bound_port = port if port is not None else _NULL_BASE_PORT + len(cabin.services)
+        service_id = f"null-svc-{uuid.uuid4().hex[:8]}"
+        # The command/env are intentionally NOT stored — secrets in env never persist.
+        cabin.services[service_id] = _NullService(service_id, bound_port)
+        return ServiceHandle(
+            service_id=service_id,
+            url=f"http://127.0.0.1:{bound_port}",
+            port=bound_port,
+            status="running",
+        )
+
+    async def service_logs(
+        self,
+        user_id: uuid.UUID,
+        service_id: str,
+        *,
+        tail: int = 200,
+    ) -> str:
+        cabin = self._cabins.get(user_id)
+        if cabin is None or service_id not in cabin.services:
+            raise CabinError("NOT_FOUND", "No service for user")
+        # Canned, deterministic log lines (app output only — never a secret).
+        lines = [
+            f"[null-cabin] service {service_id} starting",
+            f"[null-cabin] listening on {cabin.services[service_id].port}",
+            "[null-cabin] ready",
+        ]
+        return "\n".join(lines[-tail:]) + "\n"
+
+    async def service_status(self, user_id: uuid.UUID, service_id: str) -> ServiceStatus:
+        cabin = self._cabins.get(user_id)
+        if cabin is None or service_id not in cabin.services:
+            raise CabinError("NOT_FOUND", "No service for user")
+        return cabin.services[service_id].status
+
+    async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
+        cabin = self._cabins.get(user_id)
+        if cabin is None:
+            return
+        service = cabin.services.get(service_id)
+        if service is not None:
+            service.status = "stopped"

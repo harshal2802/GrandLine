@@ -19,6 +19,7 @@ from app.execution.factory import create_backend, create_git_backend
 from app.services.cabin_service import CabinService
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
+from app.services.preview_service import PreviewService
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,13 @@ _CORS_ALLOW_HEADERS = ["Authorization", "Content-Type"]
 _DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
-async def _cabin_reaper_loop(cabin_service: CabinService) -> None:
-    """Periodically reap idle / over-lifetime Cabins until cancelled on shutdown."""
+async def _cabin_reaper_loop(cabin_service: CabinService, preview_service: PreviewService) -> None:
+    """Periodically reap idle/over-lifetime Cabins AND over-lifetime previews.
+
+    Preview reaping piggybacks on the existing Cabin reaper cadence: a preview is a
+    long-running, credential-bearing process, so it must never outlive its hard max
+    lifetime — ``reap_expired`` stops any past the cap (no orphan processes).
+    """
     interval = settings.cabin_reap_interval_seconds
     while True:
         try:
@@ -41,6 +47,12 @@ async def _cabin_reaper_loop(cabin_service: CabinService) -> None:
             reaped = await cabin_service.reap_idle()
             if reaped:
                 logger.info("Cabin reaper destroyed %d idle/expired cabin(s)", len(reaped))
+            reaped_previews = await preview_service.reap_expired()
+            if reaped_previews:
+                logger.info(
+                    "Preview reaper stopped %d over-lifetime preview(s)",
+                    len(reaped_previews),
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -88,9 +100,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cabin_service = CabinService(create_cabin_backend(settings), settings)
     app.state.cabin_service = cabin_service
 
+    # Live App preview (Phase B0): a standalone service over the Cabin that runs the
+    # crew's built app as a long-running process inside the user's Cabin. It leaves the
+    # pipeline's InProcessDeploymentBackend untouched. Process-local registry, v1
+    # single-worker (like the Cabin registry / pipeline_tasks).
+    preview_service = PreviewService(cabin_service, settings)
+    app.state.preview_service = preview_service
+
     # Background idle reaper: destroys Cabins idle past the timeout OR past the hard
-    # max lifetime. Cancelled + awaited on shutdown, mirroring the pipeline-task drain.
-    reaper_task = asyncio.create_task(_cabin_reaper_loop(cabin_service))
+    # max lifetime, and stops previews past their hard lifetime cap. Cancelled +
+    # awaited on shutdown, mirroring the pipeline-task drain.
+    reaper_task = asyncio.create_task(_cabin_reaper_loop(cabin_service, preview_service))
 
     # Process-local registry of in-flight pipeline tasks. Keyed by voyage_id.
     # Multi-worker deployments are out of scope for v1 (single-worker fleet).
@@ -113,12 +133,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 _PIPELINE_SHUTDOWN_TIMEOUT_S,
             )
 
-    # Stop the Cabin reaper and tear down the Cabins it manages.
+    # Stop the Cabin reaper, then stop every preview (no orphan processes) and tear
+    # down the Cabins it manages.
     reaper_task.cancel()
     try:
         await reaper_task
     except asyncio.CancelledError:
         pass
+    await preview_service.stop_all()
     await cabin_service.cleanup_all()
     await cabin_service.close()
 

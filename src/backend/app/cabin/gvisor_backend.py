@@ -36,6 +36,8 @@ from app.cabin.backend import (
     CabinInfo,
     CabinRunResult,
     CabinStatus,
+    ServiceHandle,
+    ServiceStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,13 @@ _KIND_ENV = {
     "claude_code": "CLAUDE_CODE_OAUTH_TOKEN",
     "github": "GITHUB_TOKEN",
 }
+
+
+def _sh_quote(value: str) -> str:
+    """Single-quote a value for a POSIX shell (defense against injection)."""
+    import shlex
+
+    return shlex.quote(value)
 
 
 def _parse_memory(value: str) -> int:
@@ -83,6 +92,9 @@ class GVisorCabinBackend(CabinBackend):
         self._docker: Any = None
         # Process-local map of user_id -> container id for the running Cabin.
         self._cabins: dict[uuid.UUID, str] = {}
+        # Process-local map of (user_id, service_id) -> bound port for long-running
+        # services (Phase B0 preview). The log file path is derived from service_id.
+        self._services: dict[tuple[uuid.UUID, str], int] = {}
 
     def _client(self) -> Any:
         """Lazily construct the aiodocker client (kept out of module import time)."""
@@ -270,6 +282,116 @@ class GVisorCabinBackend(CabinBackend):
             await container.delete(force=True)
         except DockerError:
             logger.debug("Cabin %s already removed", cabin_id)
+
+    @staticmethod
+    def _log_path(service_id: str) -> str:
+        # Per-service log sink inside the Cabin's writable tmpfs (/tmp is rw).
+        return f"/tmp/grandline-preview-{service_id}.log"
+
+    async def start_service(
+        self,
+        user_id: uuid.UUID,
+        command: list[str] | str,
+        *,
+        env: dict[str, str] | None = None,
+        port: int | None = None,
+    ) -> ServiceHandle:
+        client = self._client()
+        from aiodocker.exceptions import DockerError  # lazy
+
+        cabin_id = self._cabins.get(user_id)
+        if cabin_id is None:
+            raise CabinError("NOT_FOUND", "No cabin for user")
+
+        bound_port = port if port is not None else 3000
+        service_id = f"preview-{uuid.uuid4().hex[:8]}"
+        log_path = self._log_path(service_id)
+
+        # Build the shell command: export env (values never logged), launch the app
+        # detached, tee stdout+stderr to the per-service log sink. PORT is exported so
+        # a generic dev server binds the requested localhost port.
+        cmd_str = " ".join(command) if isinstance(command, list) else command
+        env_assigns = {**(env or {}), "PORT": str(bound_port)}
+        exports = " ".join(f"export {k}={_sh_quote(v)};" for k, v in env_assigns.items())
+        launch = f"{exports} nohup sh -c {_sh_quote(cmd_str)} > {log_path} 2>&1 &"
+
+        try:
+            container = client.containers.container(cabin_id)
+            exec_obj = await container.exec(cmd=["sh", "-c", launch], tty=False)
+            await exec_obj.start(detach=True)
+        except DockerError as exc:
+            # The exception is generic — the command/env (which may carry a secret)
+            # is never placed in the message.
+            raise CabinError("START_FAILED", "Failed to start preview service") from exc
+
+        self._services[(user_id, service_id)] = bound_port
+        return ServiceHandle(
+            service_id=service_id,
+            url=f"http://127.0.0.1:{bound_port}",
+            port=bound_port,
+            status="running",
+        )
+
+    async def service_logs(
+        self,
+        user_id: uuid.UUID,
+        service_id: str,
+        *,
+        tail: int = 200,
+    ) -> str:
+        client = self._client()
+        from aiodocker.exceptions import DockerError  # lazy
+
+        cabin_id = self._cabins.get(user_id)
+        if cabin_id is None or (user_id, service_id) not in self._services:
+            raise CabinError("NOT_FOUND", "No service for user")
+
+        log_path = self._log_path(service_id)
+        try:
+            container = client.containers.container(cabin_id)
+            exec_obj = await container.exec(
+                cmd=["sh", "-c", f"tail -n {int(tail)} {log_path} 2>/dev/null || true"],
+                tty=False,
+            )
+            stream = exec_obj.start(detach=False)
+            out = b""
+            while True:
+                msg = await stream.read_out()
+                if msg is None:
+                    break
+                if msg.stream in (1, 2):
+                    out += msg.data
+        except DockerError as exc:
+            raise CabinError("LOGS_FAILED", "Failed to read preview logs") from exc
+        return out.decode(errors="replace")
+
+    async def service_status(self, user_id: uuid.UUID, service_id: str) -> ServiceStatus:
+        if (user_id, service_id) not in self._services:
+            raise CabinError("NOT_FOUND", "No service for user")
+        # B0 tracks lifecycle at the registry level; a richer probe (process alive)
+        # is a B1 refinement. A registered service is considered running.
+        return "running"
+
+    async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
+        port = self._services.pop((user_id, service_id), None)
+        if port is None:
+            return
+        cabin_id = self._cabins.get(user_id)
+        if cabin_id is None:
+            return
+        client = self._client()
+        from aiodocker.exceptions import DockerError  # lazy
+
+        try:
+            container = client.containers.container(cabin_id)
+            # Kill any process bound to the preview port (best-effort; idempotent).
+            exec_obj = await container.exec(
+                cmd=["sh", "-c", f"pkill -f 'PORT={port}' 2>/dev/null || true"],
+                tty=False,
+            )
+            await exec_obj.start(detach=True)
+        except DockerError:
+            logger.debug("Preview service %s already stopped", service_id)
 
     async def close(self) -> None:
         if self._docker is not None:

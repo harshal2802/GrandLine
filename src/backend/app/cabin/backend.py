@@ -23,6 +23,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 CabinState = Literal["running", "idle", "destroyed"]
 
+# A long-running service (Phase B0 preview) launched inside the Cabin.
+ServiceStatus = Literal["starting", "running", "stopped", "failed"]
+
 
 class CabinError(Exception):
     """Raised when a Cabin operation fails (e.g. backend unavailable, not found)."""
@@ -74,6 +77,22 @@ class CabinRunResult(BaseModel):
     duration_seconds: float
 
 
+class ServiceHandle(BaseModel):
+    """A long-running service launched inside the Cabin (Phase B0 preview).
+
+    ``url`` is the reachable preview URL (a real localhost/allow-listed address,
+    never a synthetic stub). Carries NO secret value — the command/env that started
+    the service is never surfaced here.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    service_id: str
+    url: str
+    port: int
+    status: ServiceStatus = "starting"
+
+
 class CabinBackend(ABC):
     @abstractmethod
     async def ensure(
@@ -111,6 +130,49 @@ class CabinBackend(ABC):
     @abstractmethod
     async def destroy(self, user_id: uuid.UUID) -> None:
         """Tear down the user's Cabin (idempotent)."""
+        ...
+
+    @abstractmethod
+    async def start_service(
+        self,
+        user_id: uuid.UUID,
+        command: list[str] | str,
+        *,
+        env: dict[str, str] | None = None,
+        port: int | None = None,
+    ) -> ServiceHandle:
+        """Launch a long-running process inside the user's Cabin (Phase B0 preview).
+
+        Binds a port and returns a :class:`ServiceHandle` whose ``url`` is the
+        reachable preview URL. ``env`` is materialized into the process environment
+        INSIDE the Cabin and is NEVER logged or returned. Raises ``CabinError`` if
+        the user has no Cabin.
+        """
+        ...
+
+    @abstractmethod
+    async def service_logs(
+        self,
+        user_id: uuid.UUID,
+        service_id: str,
+        *,
+        tail: int = 200,
+    ) -> str:
+        """Return the captured stdout/stderr tail of a long-running service.
+
+        Phase B0 is tail-only; Phase B1 will stream. Returns app output only —
+        never a secret.
+        """
+        ...
+
+    @abstractmethod
+    async def service_status(self, user_id: uuid.UUID, service_id: str) -> ServiceStatus:
+        """Return the lifecycle status of a long-running service."""
+        ...
+
+    @abstractmethod
+    async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
+        """Stop a long-running service (idempotent)."""
         ...
 
     async def close(self) -> None:
