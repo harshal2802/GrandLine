@@ -12,6 +12,7 @@ from app.api.v1.log_book import router as log_book_router
 from app.api.v1.navigator import router as navigator_router
 from app.api.v1.observation_deck import router as observation_deck_router
 from app.api.v1.pipeline import router as pipeline_router
+from app.api.v1.return_bottle import router as return_bottle_router
 from app.api.v1.shipwright import router as shipwright_router
 from app.api.v1.standing_orders import router as standing_orders_router
 from app.api.v1.triggers import router as triggers_router
@@ -32,6 +33,7 @@ v1_router.include_router(doctor_router)
 v1_router.include_router(shipwright_router)
 v1_router.include_router(helmsman_router)
 v1_router.include_router(pipeline_router)
+v1_router.include_router(return_bottle_router)
 v1_router.include_router(observation_deck_router)
 v1_router.include_router(log_book_router)
 v1_router.include_router(standing_orders_router)
