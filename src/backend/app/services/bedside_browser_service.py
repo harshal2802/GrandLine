@@ -116,6 +116,8 @@ class BedsideBrowserService:
         voyage_id: uuid.UUID,
         crew_action: CrewAction,
     ) -> None:
+        if self._mushi is None:
+            return
         try:
             await publish_crew_action_recorded(self._mushi, voyage_id, crew_action)
         except Exception:

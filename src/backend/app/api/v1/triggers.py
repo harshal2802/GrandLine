@@ -54,9 +54,7 @@ async def github_trigger(
     """
     raw_body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
-    if not service.verify_github_signature(
-        raw_body, signature, settings.github_webhook_secret
-    ):
+    if not service.verify_github_signature(raw_body, signature, settings.github_webhook_secret):
         raise _error(
             "INVALID_SIGNATURE",
             "Webhook signature verification failed",
