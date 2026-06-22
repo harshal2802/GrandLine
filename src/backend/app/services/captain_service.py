@@ -22,6 +22,7 @@ from app.services.crew_action_helper import (
     publish_crew_action_recorded,
     record_action,
 )
+from app.services.log_book_service import LogBookService
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ class CaptainService:
         self._mushi = mushi
         self._session = session
         self._graph = build_captain_graph(dial_router)
+        # Log Book: recall per-repo prior knowledge at planning time. Built from
+        # the same session so it shares the Captain's transaction.
+        self._log_book = LogBookService(session)
 
     @classmethod
     def reader(cls, session: AsyncSession) -> CaptainService:
@@ -65,10 +69,27 @@ class CaptainService:
         voyage.status = VoyageStatus.PLANNING.value
         await self._session.flush()
 
+        # Log Book recall (best-effort): if this voyage targets a repo, prepend
+        # the crew's prior knowledge for that repo to the planning task so we
+        # don't re-explain the stack. A failure here must never block planning.
+        planning_task = task
+        if voyage.target_repo:
+            try:
+                recalled = await self._log_book.render_context(voyage.target_repo)
+                if recalled:
+                    planning_task = f"{recalled}\n\n---\n\n{task}"
+            except Exception:
+                logger.warning(
+                    "Failed to recall Log Book context for repo %s (voyage %s)",
+                    voyage.target_repo,
+                    voyage.id,
+                    exc_info=True,
+                )
+
         try:
             result = await self._graph.ainvoke(
                 {
-                    "task": task,
+                    "task": planning_task,
                     "raw_plan": "",
                     "plan": None,
                     "error": None,

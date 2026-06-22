@@ -56,6 +56,7 @@ Users can intervene at any point — pause an agent, redirect work, inject conte
 | Dashboard | **Observation Deck** | Real-time war room UI |
 | Task submission | **Chart a Course** | User submits a task to the crew |
 | Implementation plan | **Voyage Plan** | Captain's decomposed task plan |
+| Cross-voyage memory | **Log Book** | Per-repo prior knowledge the Captain recalls at planning time — the crew never re-explains the stack |
 
 ## Tech stack
 - **Language**: TypeScript (frontend), Python (backend)
@@ -153,6 +154,7 @@ Phases 1-10 complete. The backend is functional with:
 - **Phase 8**: Execution Service — containerized sandbox with gVisor/Docker backend (aiodocker), swappable ExecutionBackend ABC, per-user sandbox lifecycle, path traversal sanitization, file size limits, app lifespan wiring
 - **Phase 9**: Git Integration Service — per-voyage sandboxed git operations (clone, branch, commit, diff, log), host allowlist to prevent token exfiltration, NUL-delimited git output parsing, branch creation from `origin/<base>` for freshness
 - **Phase 10**: Captain Agent — first crew member implemented. LangGraph two-node graph (decompose → validate) for task-to-plan decomposition via Dial System. CaptainService with atomic plan + VivreCard persistence, replannable status lifecycle, best-effort event publishing. VoyagePlanSpec with dependency graph validation (unique phases, valid references, cycle detection via topological sort). REST endpoints: POST/GET `/voyages/{id}/plan`
+- **Phase 19**: Log Book — per-repo cross-voyage memory. `LogBookEntry` model (`log_book_entries`, keyed on `target_repo`), `LogBookService` (`record`/`recall`/`render_context`), and REST endpoints `GET`/`POST /api/v1/log-book` (default-deny). `CaptainService.chart_course` recalls prior knowledge for `voyage.target_repo` and best-effort prepends it to the planning task, so the crew never re-explains a repo's layout/conventions/gotchas. Writes are API-driven; auto write-back from completed voyages is a noted follow-up.
 
 Frontend not yet started.
 

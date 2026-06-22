@@ -22,6 +22,7 @@ from app.models.crew_action import CrewAction  # noqa: E402, F401
 from app.models.deployment import Deployment  # noqa: E402, F401
 from app.models.dial_config import DialConfig  # noqa: E402, F401
 from app.models.health_check import HealthCheck  # noqa: E402, F401
+from app.models.log_book import LogBookEntry  # noqa: E402, F401
 from app.models.poneglyph import Poneglyph  # noqa: E402, F401
 from app.models.shipwright_run import ShipwrightRun  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401

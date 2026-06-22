@@ -40,11 +40,17 @@ VALID_PLAN_JSON = json.dumps(
 )
 
 
-def _mock_voyage(status: str = VoyageStatus.CHARTED.value) -> MagicMock:
+def _mock_voyage(
+    status: str = VoyageStatus.CHARTED.value,
+    target_repo: str | None = None,
+) -> MagicMock:
     voyage = MagicMock()
     voyage.id = VOYAGE_ID
     voyage.user_id = USER_ID
     voyage.status = status
+    # Default to None so the Log Book recall hook is a no-op unless a test
+    # explicitly exercises it.
+    voyage.target_repo = target_repo
     return voyage
 
 
@@ -230,6 +236,72 @@ class TestChartCourse:
             await service.chart_course(voyage, "Build a REST API with authentication")
 
         assert voyage.status == VoyageStatus.CHARTED.value
+
+
+class TestLogBookRecall:
+    @pytest.mark.asyncio
+    async def test_prepends_recalled_context_when_target_repo_set(
+        self, service: CaptainService, mock_dial_router: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(target_repo="github.com/acme/widgets")
+        recalled = (
+            "## Log Book — prior knowledge for github.com/acme/widgets"
+            "\n\n- (layout) src/ holds it"
+        )
+        service._log_book.render_context = AsyncMock(  # type: ignore[method-assign]
+            return_value=recalled
+        )
+
+        await service.chart_course(voyage, "Build a REST API with authentication")
+
+        service._log_book.render_context.assert_awaited_once_with("github.com/acme/widgets")
+        sent_task = mock_dial_router.route.call_args.args[1].messages[-1]["content"]
+        assert "Log Book — prior knowledge" in sent_task
+        assert "Build a REST API with authentication" in sent_task
+        assert "\n\n---\n\n" in sent_task
+
+    @pytest.mark.asyncio
+    async def test_does_not_prepend_when_target_repo_none(
+        self, service: CaptainService, mock_dial_router: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(target_repo=None)
+        service._log_book.render_context = AsyncMock(return_value="")  # type: ignore[method-assign]
+
+        await service.chart_course(voyage, "Build a REST API with authentication")
+
+        service._log_book.render_context.assert_not_awaited()
+        sent_task = mock_dial_router.route.call_args.args[1].messages[-1]["content"]
+        assert "Log Book" not in sent_task
+
+    @pytest.mark.asyncio
+    async def test_does_not_prepend_when_log_book_empty(
+        self, service: CaptainService, mock_dial_router: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(target_repo="github.com/acme/widgets")
+        service._log_book.render_context = AsyncMock(return_value="")  # type: ignore[method-assign]
+
+        await service.chart_course(voyage, "Build a REST API with authentication")
+
+        service._log_book.render_context.assert_awaited_once()
+        sent_task = mock_dial_router.route.call_args.args[1].messages[-1]["content"]
+        assert "Log Book" not in sent_task
+
+    @pytest.mark.asyncio
+    async def test_recall_failure_is_best_effort(
+        self, service: CaptainService, mock_dial_router: AsyncMock
+    ) -> None:
+        voyage = _mock_voyage(target_repo="github.com/acme/widgets")
+        service._log_book.render_context = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("DB hiccup")
+        )
+
+        plan_model, spec = await service.chart_course(
+            voyage, "Build a REST API with authentication"
+        )
+
+        assert spec is not None
+        sent_task = mock_dial_router.route.call_args.args[1].messages[-1]["content"]
+        assert sent_task == "Build a REST API with authentication"
 
 
 class TestGetPlan:

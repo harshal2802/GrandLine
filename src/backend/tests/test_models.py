@@ -32,6 +32,7 @@ def test_all_models_registered_in_metadata() -> None:
         "shipwright_runs",
         "build_artifacts",
         "deployments",
+        "log_book_entries",
     }
     assert expected == table_names
 

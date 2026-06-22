@@ -8,6 +8,7 @@ from app.api.v1.execution import router as execution_router
 from app.api.v1.git import router as git_router
 from app.api.v1.health import router as health_router
 from app.api.v1.helmsman import router as helmsman_router
+from app.api.v1.log_book import router as log_book_router
 from app.api.v1.navigator import router as navigator_router
 from app.api.v1.observation_deck import router as observation_deck_router
 from app.api.v1.pipeline import router as pipeline_router
@@ -30,3 +31,4 @@ v1_router.include_router(shipwright_router)
 v1_router.include_router(helmsman_router)
 v1_router.include_router(pipeline_router)
 v1_router.include_router(observation_deck_router)
+v1_router.include_router(log_book_router)
