@@ -1,0 +1,40 @@
+{
+  "workflows": {
+    "scaffold": {
+      "title": "Scaffold a PDD Project",
+      "copilot_description": "Scaffold a new PDD project with folders, context files, and git init"
+    },
+    "init": {
+      "title": "Initialize PDD in an Existing Project",
+      "copilot_description": "Initialize PDD in an existing project — detect stack, create pdd/ structure"
+    },
+    "context": {
+      "title": "Write PDD Context Files",
+      "copilot_description": "Write or update PDD context files (project.md, conventions.md, decisions.md)"
+    },
+    "research": {
+      "title": "Research Before Building",
+      "copilot_description": "Research a problem space, evaluate approaches, and decide what to build"
+    },
+    "plan": {
+      "title": "Plan Before Prompting",
+      "copilot_description": "Create an implementation plan before writing PDD prompts"
+    },
+    "prompts": {
+      "title": "Generate a Feature Prompt",
+      "copilot_description": "Generate a well-structured PDD feature prompt"
+    },
+    "update": {
+      "title": "Update an Existing Prompt",
+      "copilot_description": "Diagnose and improve a PDD prompt that isn't producing good results"
+    },
+    "review": {
+      "title": "Review AI-Generated Output",
+      "copilot_description": "Verify and review AI-generated code against PDD context, conventions, and quality standards"
+    },
+    "eval": {
+      "title": "Run Prompt Evaluations",
+      "copilot_description": "Run prompt evaluations, track pass/fail results, and level up eval maturity"
+    }
+  }
+}

@@ -1,0 +1,147 @@
+{
+  "workflows": [
+    {
+      "id": "scaffold",
+      "kind": "workflow",
+      "category": "getting-started",
+      "label": "Scaffold",
+      "summary": "Set up a new PDD project with folders, context stubs, and starter guidance.",
+      "providers": {
+        "claude": "/project:pdd-scaffold",
+        "copilot": "/pdd-scaffold",
+        "codex": "scaffold",
+        "antigravity": "/pdd-scaffold"
+      }
+    },
+    {
+      "id": "init",
+      "kind": "workflow",
+      "category": "getting-started",
+      "label": "Init",
+      "summary": "Add PDD structure to an existing repository and infer a starting context.",
+      "providers": {
+        "claude": "/project:pdd-init",
+        "copilot": "/pdd-init",
+        "codex": "init",
+        "antigravity": "/pdd-init"
+      }
+    },
+    {
+      "id": "context",
+      "kind": "workflow",
+      "category": "building-features",
+      "label": "Context",
+      "summary": "Write or update the persistent project context files that future prompts depend on.",
+      "providers": {
+        "claude": "/project:pdd-context",
+        "copilot": "/pdd-context",
+        "codex": "context",
+        "antigravity": "/pdd-context"
+      }
+    },
+    {
+      "id": "research",
+      "kind": "workflow",
+      "category": "building-features",
+      "label": "Research",
+      "summary": "Explore the problem space, evaluate options, and decide what to build.",
+      "providers": {
+        "claude": "/project:pdd-research",
+        "copilot": "/pdd-research",
+        "codex": "research",
+        "antigravity": "/pdd-research"
+      }
+    },
+    {
+      "id": "plan",
+      "kind": "workflow",
+      "category": "building-features",
+      "label": "Plan",
+      "summary": "Break a feature into phases and decide the prompt chain strategy before coding.",
+      "providers": {
+        "claude": "/project:pdd-plan",
+        "copilot": "/pdd-plan",
+        "codex": "plan",
+        "antigravity": "/pdd-plan"
+      }
+    },
+    {
+      "id": "prompts",
+      "kind": "workflow",
+      "category": "building-features",
+      "label": "Prompts",
+      "summary": "Generate focused feature prompts and place them in the right PDD folder.",
+      "providers": {
+        "claude": "/project:pdd-prompts",
+        "copilot": "/pdd-prompts",
+        "codex": "prompts",
+        "antigravity": "/pdd-prompts"
+      }
+    },
+    {
+      "id": "update",
+      "kind": "workflow",
+      "category": "building-features",
+      "label": "Update",
+      "summary": "Diagnose and improve a prompt that is producing weak or incorrect output.",
+      "providers": {
+        "claude": "/project:pdd-update",
+        "copilot": "/pdd-update",
+        "codex": "update",
+        "antigravity": "/pdd-update"
+      }
+    },
+    {
+      "id": "review",
+      "kind": "workflow",
+      "category": "quality",
+      "label": "Review",
+      "summary": "Verify and review AI-generated output before it is committed.",
+      "providers": {
+        "claude": "/project:pdd-review",
+        "copilot": "/pdd-review",
+        "codex": "review",
+        "antigravity": "/pdd-review"
+      }
+    },
+    {
+      "id": "eval",
+      "kind": "workflow",
+      "category": "quality",
+      "label": "Eval",
+      "summary": "Track prompt quality over time with repeatable evaluation criteria.",
+      "providers": {
+        "claude": "/project:pdd-eval",
+        "copilot": "/pdd-eval",
+        "codex": "eval",
+        "antigravity": "/pdd-eval"
+      }
+    },
+    {
+      "id": "status",
+      "kind": "utility",
+      "category": "getting-started",
+      "label": "Status",
+      "summary": "Check what PDD artifacts exist, what is stale, and what to do next.",
+      "providers": {
+        "claude": "/project:pdd-status",
+        "copilot": "/pdd-status",
+        "codex": "status",
+        "antigravity": "/pdd-status"
+      }
+    },
+    {
+      "id": "help",
+      "kind": "utility",
+      "category": "getting-started",
+      "label": "Help",
+      "summary": "Show the available workflows, when to use them, and the typical sequence.",
+      "providers": {
+        "claude": "/project:pdd-help",
+        "copilot": "/pdd-help",
+        "codex": "help",
+        "antigravity": "/pdd-help"
+      }
+    }
+  ]
+}
