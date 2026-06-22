@@ -46,9 +46,7 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index(
-        "ix_log_book_entries_repo", "log_book_entries", ["repo"]
-    )
+    op.create_index("ix_log_book_entries_repo", "log_book_entries", ["repo"])
     op.create_index(
         "ix_log_book_entries_repo_created",
         "log_book_entries",
