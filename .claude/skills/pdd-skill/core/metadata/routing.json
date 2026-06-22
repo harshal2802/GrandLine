@@ -1,0 +1,81 @@
+{
+  "routes": [
+    {
+      "workflow_id": "scaffold",
+      "claude_signal": "\"Start a new PDD project\", \"Set up folder structure\", \"How do I get started?\"",
+      "copilot_intent": "Start a new project / set up structure",
+      "codex_intent": "Start a brand new PDD project",
+      "antigravity_intent": "Start a new project / set up structure"
+    },
+    {
+      "workflow_id": "init",
+      "claude_signal": "\"Add PDD to my project\", \"Initialize PDD here\", \"Set up PDD in this repo\"",
+      "copilot_intent": "Add PDD to an existing project",
+      "codex_intent": "Add PDD to an existing repo",
+      "antigravity_intent": "Add PDD to an existing project"
+    },
+    {
+      "workflow_id": "context",
+      "claude_signal": "\"Help me write my project.md\", \"What should my context file say?\"",
+      "copilot_intent": "Write or update context files",
+      "codex_intent": "Write or refresh context files",
+      "antigravity_intent": "Write or update context files"
+    },
+    {
+      "workflow_id": "research",
+      "claude_signal": "\"Is there a library for this?\", \"Does something already do this?\", \"What should I build?\", \"Help me think through this\", \"I'm not sure what approach to take\"",
+      "copilot_intent": "Explore a problem space, find existing solutions, evaluate approaches",
+      "codex_intent": "Explore the problem space first",
+      "antigravity_intent": "Explore a problem space, find existing solutions, evaluate approaches"
+    },
+    {
+      "workflow_id": "plan",
+      "claude_signal": "\"Plan this feature\", \"How should I break this down?\"",
+      "copilot_intent": "Plan a feature before writing prompts",
+      "codex_intent": "Break work into phases before prompting",
+      "antigravity_intent": "Plan a feature before writing prompts"
+    },
+    {
+      "workflow_id": "prompts",
+      "claude_signal": "\"Write a prompt for this feature\", \"Help me prompt this\"",
+      "copilot_intent": "Write a feature prompt",
+      "codex_intent": "Write a feature prompt",
+      "antigravity_intent": "Write a feature prompt"
+    },
+    {
+      "workflow_id": "update",
+      "claude_signal": "\"This prompt isn't working\", \"Can you improve this prompt?\"",
+      "copilot_intent": "Fix a prompt that isn't working",
+      "codex_intent": "Fix a weak prompt",
+      "antigravity_intent": "Fix a prompt that isn't working"
+    },
+    {
+      "workflow_id": "review",
+      "claude_signal": "\"Check this code\", \"Run the quality checks\", \"Is this ready to commit?\", \"Review this output\", pastes code without instructions",
+      "copilot_intent": "Review AI-generated code (includes quality checks)",
+      "codex_intent": "Check generated output before commit",
+      "antigravity_intent": "Review AI-generated code (includes quality checks)"
+    },
+    {
+      "workflow_id": "eval",
+      "claude_signal": "\"How is my prompt performing?\", \"Run the eval\", \"Track prompt quality\"",
+      "copilot_intent": "Track prompt quality and pass rates",
+      "codex_intent": "Measure prompt quality over time",
+      "antigravity_intent": "Track prompt quality and pass rates"
+    },
+    {
+      "workflow_id": "status",
+      "claude_signal": "\"What's set up?\", \"What's missing?\", \"Show me the project health\"",
+      "copilot_intent": "Check project PDD health",
+      "codex_intent": "See what is set up or what is missing",
+      "antigravity_intent": "Check project PDD health"
+    },
+    {
+      "workflow_id": "help",
+      "claude_signal": "\"What commands are there?\", \"Help me with PDD\", \"What can you do?\", \"How does PDD work?\"",
+      "copilot_intent": "List available commands / how PDD works / get help",
+      "codex_intent": "Get workflow guidance",
+      "antigravity_intent": "List available commands / how PDD works / get help"
+    }
+  ]
+}
