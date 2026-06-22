@@ -86,6 +86,24 @@ class Settings(BaseSettings):
     # NEVER stored in code or the DB — credentials are encrypted at rest with this.
     seachest_key: str | None = None
 
+    # Cabin (Phase 0b): the per-user persistent sandbox container. The backend is
+    # swappable (env GRANDLINE_CABIN_BACKEND): "null" (default) is deterministic and
+    # container-free (CI-safe, the analogue of InProcessDeploymentBackend); "gvisor"
+    # opts into a real persistent-per-user gVisor container (lazily imports aiodocker
+    # — NOT needed for startup or tests).
+    cabin_backend: str = "null"
+    # Idle reaper + hard max lifetime: a Cabin is destroyed once idle past the idle
+    # timeout OR older than the max lifetime, whichever comes first, so a Cabin never
+    # outlives its need. The reaper loop runs every reap-interval seconds.
+    cabin_idle_timeout_seconds: int = 1800  # 30 min idle
+    cabin_max_lifetime_seconds: int = 3600  # 60 min hard cap
+    cabin_reap_interval_seconds: int = 300  # reaper cadence
+    # Deny-by-default egress allow-list for the Cabin (empty == no egress). Only the
+    # hosts a materialized credential needs should be opened, e.g.
+    # ["api.github.com", "github.com"] for the github token (A3 git ops) and the
+    # Anthropic endpoint (e.g. "api.anthropic.com") for the claude_code token (C0).
+    cabin_network_allow: list[str] = []
+
     # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
     demo_mode: bool = False
 

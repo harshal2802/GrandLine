@@ -10,11 +10,13 @@ from redis.asyncio import ConnectionPool, Redis
 
 from app.api.v1.router import v1_router
 from app.browser.factory import create_browser_backend
+from app.cabin.factory import create_cabin_backend
 from app.core.config import settings
 from app.core.middleware import DefaultDenyMiddleware
 from app.den_den_mushi.mushi import DenDenMushi
 from app.deployment.in_process import InProcessDeploymentBackend
 from app.execution.factory import create_backend, create_git_backend
+from app.services.cabin_service import CabinService
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
 
@@ -28,6 +30,21 @@ _CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 _CORS_ALLOW_HEADERS = ["Authorization", "Content-Type"]
 
 _DEFAULT_JWT_SECRET = "change-me-in-production"
+
+
+async def _cabin_reaper_loop(cabin_service: CabinService) -> None:
+    """Periodically reap idle / over-lifetime Cabins until cancelled on shutdown."""
+    interval = settings.cabin_reap_interval_seconds
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            reaped = await cabin_service.reap_idle()
+            if reaped:
+                logger.info("Cabin reaper destroyed %d idle/expired cabin(s)", len(reaped))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Cabin reaper loop iteration failed", exc_info=True)
 
 
 def validate_production_settings() -> None:
@@ -66,6 +83,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.browser_backend = create_browser_backend(settings)
 
+    # Cabin (Phase 0b): the per-user persistent sandbox. Like the pipeline-task
+    # registry, the Cabin registry is process-local (v1 single-worker).
+    cabin_service = CabinService(create_cabin_backend(settings), settings)
+    app.state.cabin_service = cabin_service
+
+    # Background idle reaper: destroys Cabins idle past the timeout OR past the hard
+    # max lifetime. Cancelled + awaited on shutdown, mirroring the pipeline-task drain.
+    reaper_task = asyncio.create_task(_cabin_reaper_loop(cabin_service))
+
     # Process-local registry of in-flight pipeline tasks. Keyed by voyage_id.
     # Multi-worker deployments are out of scope for v1 (single-worker fleet).
     pipeline_tasks: dict[uuid.UUID, asyncio.Task[None]] = {}
@@ -86,6 +112,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 len(still_pending),
                 _PIPELINE_SHUTDOWN_TIMEOUT_S,
             )
+
+    # Stop the Cabin reaper and tear down the Cabins it manages.
+    reaper_task.cancel()
+    try:
+        await reaper_task
+    except asyncio.CancelledError:
+        pass
+    await cabin_service.cleanup_all()
+    await cabin_service.close()
 
     await app.state.deployment_backend.close()
     await app.state.browser_backend.close()

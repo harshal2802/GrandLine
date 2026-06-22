@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.bedside_browser import router as bedside_browser_router
+from app.api.v1.cabin import router as cabin_router
 from app.api.v1.captain import router as captain_router
 from app.api.v1.dial import router as dial_router
 from app.api.v1.doctor import router as doctor_router
@@ -42,3 +43,4 @@ v1_router.include_router(standing_orders_router)
 v1_router.include_router(sea_chest_router)
 v1_router.include_router(triggers_router)
 v1_router.include_router(bedside_browser_router)
+v1_router.include_router(cabin_router)
