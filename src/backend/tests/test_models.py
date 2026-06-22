@@ -13,6 +13,7 @@ from app.models.health_check import HealthCheck
 from app.models.poneglyph import Poneglyph
 from app.models.shipwright_run import ShipwrightRun
 from app.models.user import User
+from app.models.user_credential import UserCredential
 from app.models.validation_run import ValidationRun
 from app.models.vivre_card import VivreCard
 from app.models.voyage import Voyage, VoyagePlan
@@ -36,6 +37,7 @@ def test_all_models_registered_in_metadata() -> None:
         "log_book_entries",
         "standing_orders",
         "browser_checks",
+        "user_credentials",
     }
     assert expected == table_names
 
@@ -342,3 +344,41 @@ def test_browser_check_console_errors_jsonb() -> None:
     col = BrowserCheck.__table__.c.console_errors
     assert col.type.__class__.__name__ == "JSONB"
     assert col.nullable is False
+
+
+def test_user_credential_table_columns() -> None:
+    mapper = inspect(UserCredential)
+    column_names = {c.key for c in mapper.columns}
+    assert column_names == {
+        "id",
+        "user_id",
+        "kind",
+        "ciphertext",
+        "label",
+        "created_at",
+        "updated_at",
+        "last_used_at",
+    }
+
+
+def test_user_credential_has_no_plaintext_secret_column() -> None:
+    # Security: the Sea Chest stores ONLY the encrypted secret at rest.
+    column_names = {c.key for c in inspect(UserCredential).columns}
+    assert "secret" not in column_names
+    assert "plaintext" not in column_names
+
+
+def test_user_credential_ciphertext_is_binary_not_null() -> None:
+    col = UserCredential.__table__.c.ciphertext
+    assert col.type.__class__.__name__ == "LargeBinary"
+    assert col.nullable is False
+
+
+def test_user_credential_user_id_indexed() -> None:
+    col = UserCredential.__table__.c.user_id
+    assert col.index is True
+
+
+def test_user_credential_user_kind_unique_constraint() -> None:
+    constraint_names = {c.name for c in UserCredential.__table__.constraints}
+    assert "uq_user_credentials_user_kind" in constraint_names

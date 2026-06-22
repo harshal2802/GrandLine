@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # An inbound GitHub issue only charts a course when it carries this label.
     trigger_label: str = "grandline"
 
+    # Sea Chest (Phase 0a): the encryption key for the per-user credential vault.
+    # An arbitrary string is fine — it is deterministically derived into a Fernet
+    # key. Env ``GRANDLINE_SEACHEST_KEY``. Unset + debug derives a STABLE dev key
+    # (with a warning); unset + non-debug fails closed when encryption is needed.
+    # NEVER stored in code or the DB — credentials are encrypted at rest with this.
+    seachest_key: str | None = None
+
     # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
     demo_mode: bool = False
 
