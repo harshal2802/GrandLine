@@ -17,6 +17,7 @@ from app.dial_system.rate_limiter import RateLimiter
 from app.dial_system.router import DialSystemRouter
 from app.models.dial_config import DialConfig
 from app.models.enums import CrewRole
+from app.schemas.dial_config import resolve_claude_code_role_config
 
 # Sensible per-provider default models, used when a fallback_chain entry is a
 # bare provider string with no explicit model. The primary role's model is never
@@ -69,7 +70,12 @@ def _resolve_fallback_entry(entry: Any, settings: Settings) -> tuple[str, str]:
     raise ValueError(f"Invalid fallback entry (expected string or object): {entry!r}")
 
 
-def create_adapter(provider: str, model: str, settings: Settings) -> ProviderAdapter:
+def create_adapter(
+    provider: str,
+    model: str,
+    settings: Settings,
+    role_cfg: dict[str, Any] | None = None,
+) -> ProviderAdapter:
     if provider == "anthropic":
         return AnthropicAdapter(
             client=AsyncAnthropic(api_key=settings.anthropic_api_key), model=model
@@ -83,11 +89,17 @@ def create_adapter(provider: str, model: str, settings: Settings) -> ProviderAda
             base_url=settings.ollama_base_url,
         )
     elif provider in ("claude_code", "claude-code"):
+        # Per-role safe knob (Phase C1): max_turns may come from the role's
+        # mapping entry; host/auth knobs stay env-level. Falls back to the env
+        # default on any missing/invalid per-role value.
+        max_turns = resolve_claude_code_role_config(role_cfg).max_turns or (
+            settings.claude_code_max_turns
+        )
         return ClaudeCodeAdapter(
             model=model,
             cli_path=settings.claude_code_cli_path,
             timeout_seconds=settings.claude_code_timeout_seconds,
-            max_turns=settings.claude_code_max_turns,
+            max_turns=max_turns,
             workspace=settings.claude_code_workspace or None,
             extra_args=settings.claude_code_extra_args,
         )
@@ -113,7 +125,7 @@ def build_router_from_config(
         model = provider_cfg.get("model")
         if not provider or not model:
             raise ValueError(f"Missing 'provider' or 'model' in config for role {role_str}")
-        role_mapping[role] = create_adapter(provider, model, settings)
+        role_mapping[role] = create_adapter(provider, model, settings, role_cfg=provider_cfg)
 
     chains: dict[str, Any] = config.fallback_chain or {}
     for role_str, fallback_entries in chains.items():

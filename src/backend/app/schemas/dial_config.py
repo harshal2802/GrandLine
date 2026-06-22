@@ -104,3 +104,33 @@ def resolve_shipwright_max_concurrency(role_mapping: dict[str, Any] | None) -> i
         )
         return 1
     return cfg.max_concurrency or 1
+
+
+class ClaudeCodeRoleConfig(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    # Safe behavioral knob only. Host/auth knobs (cli_path, workspace, extra_args,
+    # tokens) stay env-level and are NOT exposed per-role. Room left for further
+    # safe knobs later (Phase C2 surfaces these in the DialPanel UI).
+    max_turns: int | None = Field(default=None, ge=1, le=10)
+
+
+def resolve_claude_code_role_config(role_cfg: dict[str, Any] | None) -> ClaudeCodeRoleConfig:
+    """Resolve one role's claude_code options from its raw ``role_mapping`` entry.
+
+    Validates only the known claude-code fields (a filtered subset) so sibling
+    keys like ``provider``/``model`` never trip strict mode. Falls back to an
+    all-None ``ClaudeCodeRoleConfig`` on any non-dict / invalid shape so the
+    caller can trust the return without defensive checks (mirrors
+    ``resolve_shipwright_max_concurrency``).
+    """
+    if not isinstance(role_cfg, dict):
+        return ClaudeCodeRoleConfig()
+    subset = {"max_turns": role_cfg.get("max_turns")}
+    try:
+        return ClaudeCodeRoleConfig.model_validate(subset)
+    except ValidationError:
+        logger.warning(
+            "Invalid claude_code role config — falling back to env defaults: %r", role_cfg
+        )
+        return ClaudeCodeRoleConfig()
