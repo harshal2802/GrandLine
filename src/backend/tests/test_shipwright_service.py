@@ -179,9 +179,7 @@ class TestBuildCodeInterventionDrain:
         drained = DrainedInterventions(
             injected_context=["use redis"], redirect_instruction="use a queue"
         )
-        monkeypatch.setattr(
-            ss, "drain_pending_interventions", AsyncMock(return_value=drained)
-        )
+        monkeypatch.setattr(ss, "drain_pending_interventions", AsyncMock(return_value=drained))
 
         voyage = _mock_voyage(phase_status={"1": PHASE_STATUS_PENDING})
         await service.build_code(voyage, 1, _mock_poneglyph(), [_mock_health_check()], USER_ID)

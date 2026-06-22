@@ -8,9 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 logger = logging.getLogger(__name__)
 
 # Providers the Dial System can build adapters for (mirrors factory.create_adapter).
-SUPPORTED_PROVIDERS = frozenset(
-    {"anthropic", "openai", "ollama", "claude_code", "claude-code"}
-)
+SUPPORTED_PROVIDERS = frozenset({"anthropic", "openai", "ollama", "claude_code", "claude-code"})
 
 
 def validate_fallback_chain(value: dict[str, Any] | None) -> dict[str, Any] | None:
