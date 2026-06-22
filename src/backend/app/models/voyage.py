@@ -32,6 +32,10 @@ class Voyage(Base):
         String(50), default=VoyageStatus.CHARTED.value, nullable=False
     )
     target_repo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # How the voyage was triggered (a Message in a Bottle). NULL for a manually
+    # charted voyage; populated for an externally triggered one (e.g. a GitHub
+    # issue webhook). The canonical provenance record Phase 22 reads to reply back.
+    origin: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     phase_status: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default="{}", nullable=False
     )

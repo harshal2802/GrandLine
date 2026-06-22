@@ -13,6 +13,10 @@ PUBLIC_PATHS: set[str] = {
     "/api/v1/auth/register",
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
+    # Message in a Bottle (Phase 21): the inbound GitHub webhook carries NO Bearer
+    # token — it is HMAC-verified (X-Hub-Signature-256) at the route instead. This
+    # is the single deliberate relaxation of default-deny.
+    "/api/v1/triggers/github",
     "/api/docs",
     "/api/redoc",
     "/api/openapi.json",

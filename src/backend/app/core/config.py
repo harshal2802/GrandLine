@@ -59,6 +59,16 @@ class Settings(BaseSettings):
     git_author_email: str = "crew@grandline.dev"
     github_api_token: str = ""
 
+    # Message in a Bottle (Phase 21): external triggers via signed webhook.
+    # The shared secret GitHub signs webhook deliveries with (X-Hub-Signature-256).
+    # Unset == reject every delivery (we never accept an unverified payload). Env only.
+    github_webhook_secret: str | None = None
+    # A webhook carries no GrandLine identity; the owning user of a triggered voyage
+    # is resolved from this configured email (operators choose the account).
+    trigger_default_user_email: str | None = None
+    # An inbound GitHub issue only charts a course when it carries this label.
+    trigger_label: str = "grandline"
+
     # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
     demo_mode: bool = False
 
