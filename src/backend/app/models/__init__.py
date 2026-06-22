@@ -25,6 +25,7 @@ from app.models.health_check import HealthCheck  # noqa: E402, F401
 from app.models.log_book import LogBookEntry  # noqa: E402, F401
 from app.models.poneglyph import Poneglyph  # noqa: E402, F401
 from app.models.shipwright_run import ShipwrightRun  # noqa: E402, F401
+from app.models.standing_order import StandingOrder  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
 from app.models.validation_run import ValidationRun  # noqa: E402, F401
 from app.models.vivre_card import VivreCard  # noqa: E402, F401
