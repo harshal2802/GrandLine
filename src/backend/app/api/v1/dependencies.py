@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.browser.backend import BrowserCheckBackend
 from app.core.config import settings
 from app.core.security import JWTError, decode_token
 from app.den_den_mushi.mushi import DenDenMushi
@@ -116,6 +117,11 @@ def get_git_service(request: Request) -> GitService:
 
 def get_deployment_backend(request: Request) -> DeploymentBackend:
     backend: DeploymentBackend = request.app.state.deployment_backend
+    return backend
+
+
+def get_browser_backend(request: Request) -> BrowserCheckBackend:
+    backend: BrowserCheckBackend = request.app.state.browser_backend
     return backend
 
 
