@@ -55,9 +55,7 @@ class TestNullBackendDeterminism:
 
     async def test_no_screenshot_when_disabled(self) -> None:
         backend = NullBrowserBackend()
-        spec = BrowserCheckSpec(
-            name="dash", url="http://localhost:3000", capture_screenshot=False
-        )
+        spec = BrowserCheckSpec(name="dash", url="http://localhost:3000", capture_screenshot=False)
         result = await backend.run(spec)
         assert result.screenshots == []
 

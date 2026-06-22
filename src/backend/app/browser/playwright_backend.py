@@ -49,9 +49,7 @@ class PlaywrightBrowserBackend(BrowserCheckBackend):
                 page = await browser.new_page()
                 page.on(
                     "console",
-                    lambda msg: console_errors.append(msg.text)
-                    if msg.type == "error"
-                    else None,
+                    lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
                 )
                 await page.goto(spec.url, timeout=self._timeout_ms)
                 if spec.wait_for:
@@ -83,8 +81,8 @@ async def _evaluate_assertion(page: object, assertion: object) -> bool:
     value = assertion.value  # type: ignore[attr-defined]
     if atype == "selector_present":
         locator = page.locator(value)  # type: ignore[attr-defined]
-        return await locator.count() > 0
+        return bool(await locator.count() > 0)
     if atype == "text_present":
         content = await page.content()  # type: ignore[attr-defined]
-        return value in content
+        return bool(value in content)
     return False
