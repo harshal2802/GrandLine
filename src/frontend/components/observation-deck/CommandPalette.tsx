@@ -16,6 +16,8 @@ export function CommandPalette() {
   const togglePalette = useUiStore((s) => s.togglePalette);
   const toggleFocusMode = useUiStore((s) => s.toggleFocusMode);
   const toggleHelp = useUiStore((s) => s.toggleHelp);
+  const toggleFleet = useUiStore((s) => s.toggleFleet);
+  const setFleet = useUiStore((s) => s.setFleet);
   const returnToLive = usePlaybackStore((s) => s.returnToLive);
 
   const [query, setQuery] = useState("");
@@ -29,6 +31,7 @@ export function CommandPalette() {
     { id: "sea-chart", label: "Go to Sea Chart", run: () => go("/app/sea-chart") },
     { id: "crew-map", label: "Go to Crew Map", run: () => go("/app/crew-map") },
     { id: "ships-log", label: "Go to Ship's Log", run: () => go("/app/ships-log") },
+    { id: "fleet", label: "Open Fleet Switcher", run: toggleFleet },
     { id: "live", label: "Return to live", run: returnToLive },
     { id: "focus", label: "Toggle focus mode", run: toggleFocusMode },
     { id: "help", label: "Keyboard shortcuts", run: toggleHelp },
@@ -46,18 +49,19 @@ export function CommandPalette() {
       }
       if (e.key === "Escape") {
         setPalette(false);
-        useUiStore.setState({ helpOpen: false });
+        useUiStore.setState({ helpOpen: false, fleetOpen: false });
         chord.current = null;
         return;
       }
       if (open) return; // palette handles its own typing
 
-      // Chord: `g` then s/c/l.
+      // Chord: `g` then s/c/l/f.
       if (chord.current === "g") {
         chord.current = null;
         if (e.key === "s") return go("/app/sea-chart");
         if (e.key === "c") return go("/app/crew-map");
         if (e.key === "l") return go("/app/ships-log");
+        if (e.key === "f") return setFleet(true); // g f → Fleet Switcher
         return;
       }
       if (e.key === "g") {
