@@ -85,6 +85,12 @@ class ClaudeCodeAdapter(ProviderAdapter):
     - `max_tokens` is forwarded via CLAUDE_CODE_MAX_OUTPUT_TOKENS.
     - Runs with --max-turns (default 1) so the gateway behaves as a text
       completion endpoint rather than an autonomous agent.
+    - Per-user auth (Phase C0): an OPTIONAL ``oauth_token`` (a user's vaulted
+      ``CLAUDE_CODE_OAUTH_TOKEN`` revealed from their Sea Chest) makes the CLI run
+      AS THAT USER. When ``None`` (the default) nothing is injected and the CLI
+      keeps today's host behavior (host `claude` login / env token / API key). The
+      token is never logged. Routing the FULL CLI execution inside the user's Cabin
+      is a noted refinement — C0 delivers the per-user token only.
     """
 
     def __init__(
@@ -95,11 +101,14 @@ class ClaudeCodeAdapter(ProviderAdapter):
         max_turns: int = 1,
         workspace: str | None = None,
         extra_args: str = "",
+        oauth_token: str | None = None,
     ) -> None:
         self._model = model
         self._cli_path = cli_path
         self._timeout_seconds = timeout_seconds
         self._max_turns = max_turns
+        # Per-user CLAUDE_CODE_OAUTH_TOKEN (C0). None => host behavior unchanged.
+        self._oauth_token = oauth_token
         # Never run in the backend's own cwd: the CLI's read-only file tools
         # would otherwise be able to see backend source and config.
         self._workspace = workspace or tempfile.gettempdir()
@@ -137,6 +146,11 @@ class ClaudeCodeAdapter(ProviderAdapter):
         env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(request.max_tokens)
         # Server context: no autoupdater or other non-essential traffic.
         env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        # Per-user auth (C0): when a user has connected Claude Code, run the CLI as
+        # them via THEIR vaulted token. Absent (None) => leave the host's auth
+        # (env token / `claude` login / API key) untouched. Never logged.
+        if self._oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = self._oauth_token
         return env
 
     def _note_rate_limit(self, text: str) -> None:

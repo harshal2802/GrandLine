@@ -12,10 +12,14 @@ import pytest
 from fastapi import HTTPException
 
 from app.schemas.integrations import (
+    ClaudeLoginPollRequest,
+    ClaudeLoginStart,
+    ClaudeLoginStatus,
     DeviceFlowPollRequest,
     DeviceFlowStart,
     DeviceFlowStatus,
 )
+from app.services.claude_auth_service import ClaudeAuthError
 from app.services.github_auth_service import GithubAuthError
 
 USER_ID = uuid.uuid4()
@@ -109,3 +113,90 @@ class TestPollEndpoint:
 
         await poll_github_device_flow(body, _user(OTHER_USER_ID), svc)
         svc.poll_device_flow.assert_awaited_once_with(OTHER_USER_ID, "dc")
+
+
+class TestClaudeLoginStartEndpoint:
+    @pytest.mark.asyncio
+    async def test_start_returns_url_and_login_id_no_token(self) -> None:
+        from app.api.v1.integrations import start_claude_login
+
+        svc = AsyncMock()
+        svc.start_login = AsyncMock(
+            return_value=ClaudeLoginStart(
+                verification_uri="https://claude.ai/device",
+                user_code="WXYZ-1234",
+                login_id="opaque-id",
+            )
+        )
+
+        result = await start_claude_login(_user(), svc)
+
+        assert result.verification_uri == "https://claude.ai/device"
+        assert result.login_id == "opaque-id"
+        # Owner-scoped: the authenticated user's id drove the login.
+        svc.start_login.assert_awaited_once_with(USER_ID)
+        # No token field anywhere.
+        assert "token" not in result.model_dump()
+
+    @pytest.mark.asyncio
+    async def test_start_cabin_unavailable_503(self) -> None:
+        from app.api.v1.integrations import start_claude_login
+
+        svc = AsyncMock()
+        svc.start_login = AsyncMock(side_effect=ClaudeAuthError("CABIN_UNAVAILABLE", "nope"))
+
+        with pytest.raises(HTTPException) as exc:
+            await start_claude_login(_user(), svc)
+        assert exc.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_start_login_failed_502(self) -> None:
+        from app.api.v1.integrations import start_claude_login
+
+        svc = AsyncMock()
+        svc.start_login = AsyncMock(side_effect=ClaudeAuthError("LOGIN_FAILED", "no url"))
+
+        with pytest.raises(HTTPException) as exc:
+            await start_claude_login(_user(), svc)
+        assert exc.value.status_code == 502
+
+
+class TestClaudeLoginPollEndpoint:
+    @pytest.mark.asyncio
+    async def test_poll_owner_scoped_connected_no_token(self) -> None:
+        from app.api.v1.integrations import poll_claude_login
+
+        svc = AsyncMock()
+        svc.poll_login = AsyncMock(
+            return_value=ClaudeLoginStatus(status="connected", label="claude-login")
+        )
+        body = ClaudeLoginPollRequest(login_id="opaque-id")
+
+        result = await poll_claude_login(body, _user(), svc)
+
+        assert result.status == "connected"
+        assert result.label == "claude-login"
+        svc.poll_login.assert_awaited_once_with(USER_ID, "opaque-id")
+        assert "token" not in result.model_dump()
+
+    @pytest.mark.asyncio
+    async def test_poll_pending(self) -> None:
+        from app.api.v1.integrations import poll_claude_login
+
+        svc = AsyncMock()
+        svc.poll_login = AsyncMock(return_value=ClaudeLoginStatus(status="pending"))
+        body = ClaudeLoginPollRequest(login_id="opaque-id")
+
+        result = await poll_claude_login(body, _user(), svc)
+        assert result.status == "pending"
+
+    @pytest.mark.asyncio
+    async def test_poll_uses_caller_id_not_foreign(self) -> None:
+        from app.api.v1.integrations import poll_claude_login
+
+        svc = AsyncMock()
+        svc.poll_login = AsyncMock(return_value=ClaudeLoginStatus(status="pending"))
+        body = ClaudeLoginPollRequest(login_id="lid")
+
+        await poll_claude_login(body, _user(OTHER_USER_ID), svc)
+        svc.poll_login.assert_awaited_once_with(OTHER_USER_ID, "lid")

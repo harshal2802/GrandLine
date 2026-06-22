@@ -75,6 +75,7 @@ def create_adapter(
     model: str,
     settings: Settings,
     role_cfg: dict[str, Any] | None = None,
+    oauth_token: str | None = None,
 ) -> ProviderAdapter:
     if provider == "anthropic":
         return AnthropicAdapter(
@@ -102,6 +103,9 @@ def create_adapter(
             max_turns=max_turns,
             workspace=settings.claude_code_workspace or None,
             extra_args=settings.claude_code_extra_args,
+            # Per-user token (C0): runs the CLI as the requesting user when their
+            # Sea Chest holds a claude_code credential; None => host behavior.
+            oauth_token=oauth_token,
         )
     else:
         raise ValueError(f"Unknown provider: {provider!r}")
@@ -112,9 +116,17 @@ def build_router_from_config(
     settings: Settings,
     mushi: DenDenMushi,
     rate_limiter: RateLimiter,
+    claude_code_oauth_token: str | None = None,
 ) -> DialSystemRouter:
+    # Per-user Claude Code token (C0): when the requesting user has connected
+    # Claude Code, their vaulted CLAUDE_CODE_OAUTH_TOKEN is threaded into every
+    # claude_code adapter (primary + fallback) so the CLI runs AS THAT USER. None
+    # (the default) preserves today's host behavior.
     role_mapping: dict[CrewRole, ProviderAdapter] = {}
     fallback_chains: dict[CrewRole, list[ProviderAdapter]] = {}
+
+    def _token_for(provider: str | None) -> str | None:
+        return claude_code_oauth_token if provider in ("claude_code", "claude-code") else None
 
     mapping: dict[str, Any] = config.role_mapping or {}
     for role_str, provider_cfg in mapping.items():
@@ -125,7 +137,13 @@ def build_router_from_config(
         model = provider_cfg.get("model")
         if not provider or not model:
             raise ValueError(f"Missing 'provider' or 'model' in config for role {role_str}")
-        role_mapping[role] = create_adapter(provider, model, settings, role_cfg=provider_cfg)
+        role_mapping[role] = create_adapter(
+            provider,
+            model,
+            settings,
+            role_cfg=provider_cfg,
+            oauth_token=_token_for(provider),
+        )
 
     chains: dict[str, Any] = config.fallback_chain or {}
     for role_str, fallback_entries in chains.items():
@@ -133,7 +151,9 @@ def build_router_from_config(
         adapters: list[ProviderAdapter] = []
         for entry in fallback_entries:
             provider, model = _resolve_fallback_entry(entry, settings)
-            adapters.append(create_adapter(provider, model, settings))
+            adapters.append(
+                create_adapter(provider, model, settings, oauth_token=_token_for(provider))
+            )
         fallback_chains[role] = adapters
 
     return DialSystemRouter(

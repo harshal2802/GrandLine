@@ -350,3 +350,39 @@ class TestClaudeCodeAdapter:
     def test_check_rate_limit_not_limited_by_default(self) -> None:
         adapter = ClaudeCodeAdapter(model="sonnet")
         assert adapter.check_rate_limit().is_limited is False
+
+
+class TestClaudeCodePerUserToken:
+    """Phase C0: an optional per-user oauth_token sets CLAUDE_CODE_OAUTH_TOKEN."""
+
+    @pytest.mark.asyncio
+    async def test_oauth_token_injected_into_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        proc = _FakeProcess(stdout=_result_json())
+        captured = _patch_subprocess(monkeypatch, proc)
+
+        adapter = ClaudeCodeAdapter(model="sonnet", oauth_token="sk-ant-user-token")
+        await adapter.complete(_make_request())
+
+        env = captured["kwargs"]["env"]
+        assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-user-token"
+
+    @pytest.mark.asyncio
+    async def test_no_oauth_token_leaves_env_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        proc = _FakeProcess(stdout=_result_json())
+        captured = _patch_subprocess(monkeypatch, proc)
+
+        # Default (None) => host behavior; no per-user token var is set by the adapter.
+        adapter = ClaudeCodeAdapter(model="sonnet")
+        await adapter.complete(_make_request())
+
+        env = captured["kwargs"]["env"]
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in env
+
+    def test_env_helper_sets_token_only_when_present(self) -> None:
+        req = _make_request()
+        with_token = ClaudeCodeAdapter(model="sonnet", oauth_token="sk-ant-x")._env(req)
+        without = ClaudeCodeAdapter(model="sonnet")._env(req)
+        assert with_token["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-x"
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in without
