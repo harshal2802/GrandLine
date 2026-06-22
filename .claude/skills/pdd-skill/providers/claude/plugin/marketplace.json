@@ -1,0 +1,31 @@
+{
+  "name": "pdd-skill",
+  "owner": {
+    "name": "harshal2802"
+  },
+  "metadata": {
+    "description": "Prompt Driven Development plugin marketplace"
+  },
+  "plugins": [
+    {
+      "name": "pdd-skill",
+      "source": "./",
+      "description": "Prompt Driven Development — structure AI-assisted projects with versioned prompts, persistent context, and automated review",
+      "version": "1.5.0",
+      "author": {
+        "name": "harshal2802"
+      },
+      "repository": "https://github.com/harshal2802/pdd-skill",
+      "homepage": "https://github.com/harshal2802/pdd-skill",
+      "license": "MIT",
+      "keywords": [
+        "pdd",
+        "prompt-driven-development",
+        "ai-assisted",
+        "prompts",
+        "code-review",
+        "scaffolding"
+      ]
+    }
+  ]
+}

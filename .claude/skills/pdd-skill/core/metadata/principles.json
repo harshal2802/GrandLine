@@ -1,0 +1,45 @@
+{
+  "claude_quick_path": "For simple features, you only need **Context -> Prompts -> Review**. Research, Plan, and Eval add value for complex or critical features but are not required for every task. Use **Init** instead of Scaffold when adding PDD to a project that already has code.",
+  "principles": [
+    {
+      "claude": "**One prompt, one job.** Split if multiple concerns.",
+      "copilot": "**One prompt, one job.** Split multi-concern tasks before prompting.",
+      "codex": "One prompt, one job.",
+      "antigravity": "**One prompt, one job.** Split if multiple concerns."
+    },
+    {
+      "claude": "**Commit prompts alongside outputs.** The prompt is part of the codebase.",
+      "copilot": "**Commit prompts alongside outputs.** The prompt is part of the codebase.",
+      "codex": "Commit prompts alongside outputs.",
+      "antigravity": "**Commit prompts alongside outputs.** The prompt is part of the codebase."
+    },
+    {
+      "claude": "**Update context after every significant decision.** Stale context degrades future prompts.",
+      "copilot": "**Update context after every significant decision.** Stale context degrades future prompts.",
+      "codex": "Update context after meaningful decisions.",
+      "antigravity": "**Update context after every significant decision.** Stale context degrades future prompts."
+    },
+    {
+      "claude": "**Timebox experiments.** Name with a date prefix (`YYYY-MM-DD-`). After one week: promote to `pdd/prompts/features/` if it worked, delete if it didn't.",
+      "copilot": "**Timebox experiments.** Exploratory prompts go in `pdd/prompts/experiments/` with a date prefix (`YYYY-MM-DD-`). After one week: promote to `pdd/prompts/features/` or delete.",
+      "codex": "Timebox exploratory prompts.",
+      "antigravity": "**Timebox experiments.** Name with a date prefix (`YYYY-MM-DD-`). After one week: promote to `pdd/prompts/features/` if it worked, delete if it didn't."
+    },
+    {
+      "claude": "**Never commit unreviewed output.** Treat it like a PR.",
+      "copilot": "**Never commit unreviewed output.** Treat AI output like a PR.",
+      "codex": "Never commit unreviewed AI output.",
+      "antigravity": "**Never commit unreviewed output.** Treat it like a PR."
+    },
+    {
+      "claude": "**Context must reflect reality.** Aspirational `project.md` actively misleads.",
+      "copilot": "**Context must reflect reality.** Aspirational project.md actively misleads.",
+      "codex": "Keep context truthful and current.",
+      "antigravity": "**Context must reflect reality.** Aspirational `project.md` actively misleads."
+    }
+  ],
+  "codex_default_flow": {
+    "simple": "`context -> prompts -> review`",
+    "complex": "`context -> research -> plan -> prompts -> review -> eval`"
+  }
+}
