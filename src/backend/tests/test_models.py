@@ -62,10 +62,17 @@ def test_voyage_table_columns() -> None:
         "description",
         "status",
         "target_repo",
+        "origin",
         "phase_status",
         "created_at",
         "updated_at",
     }
+
+
+def test_voyage_origin_column_is_jsonb_nullable() -> None:
+    col = Voyage.__table__.c.origin
+    assert col.nullable is True
+    assert col.type.__class__.__name__ == "JSONB"
 
 
 def test_voyage_phase_status_column_is_jsonb_not_nullable() -> None:
