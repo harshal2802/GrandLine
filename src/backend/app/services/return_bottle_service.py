@@ -24,6 +24,7 @@ read from settings and never logged.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,7 +93,7 @@ class ReturnBottleService:
         )
         return "\n".join(lines)
 
-    async def post_to_github_issue(self, origin: dict, body: str) -> bool:
+    async def post_to_github_issue(self, origin: dict[str, Any], body: str) -> bool:
         """Post ``body`` as a comment on the GitHub issue described by ``origin``.
 
         ``origin["repo"]`` is ``owner/name``; the comment is POSTed to
@@ -107,9 +108,7 @@ class ReturnBottleService:
         """
         token = self._settings.github_api_token
         if not token:
-            logger.info(
-                "Return Bottle: github_api_token unset — skipping issue comment"
-            )
+            logger.info("Return Bottle: github_api_token unset — skipping issue comment")
             return False
 
         repo = origin.get("repo")
@@ -166,9 +165,7 @@ class ReturnBottleService:
         origin = voyage.origin
         if isinstance(origin, dict) and origin.get("type") == "github_issue":
             try:
-                result["issue_commented"] = await self.post_to_github_issue(
-                    origin, summary
-                )
+                result["issue_commented"] = await self.post_to_github_issue(origin, summary)
             except Exception:
                 logger.warning(
                     "Return Bottle: posting issue comment failed for voyage %s",
