@@ -26,7 +26,14 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cabin.backend import CabinBackend, CabinError, CabinRunResult, CabinStatus
+from app.cabin.backend import (
+    CabinBackend,
+    CabinError,
+    CabinRunResult,
+    CabinStatus,
+    ServiceHandle,
+    ServiceStatus,
+)
 from app.core.config import Settings
 from app.services.sea_chest_service import SeaChestService
 
@@ -100,6 +107,43 @@ class CabinService:
         if user_id not in self._cabins:
             raise CabinError("NOT_FOUND", "No cabin for user")
         return await self._backend.status(user_id)
+
+    async def start_service(
+        self,
+        user_id: uuid.UUID,
+        session: AsyncSession,
+        command: list[str] | str,
+        *,
+        env: dict[str, str] | None = None,
+        port: int | None = None,
+    ) -> ServiceHandle:
+        """Ensure the user's Cabin, then launch a long-running service inside it.
+
+        Used by the Phase B0 preview path. ``env`` is materialized into the process
+        INSIDE the Cabin by the backend and is never stored, returned, or logged.
+        """
+        await self.ensure(user_id, session)
+        handle = await self._backend.start_service(user_id, command, env=env, port=port)
+        self._touch(user_id, refresh_only=True)
+        return handle
+
+    async def service_logs(
+        self,
+        user_id: uuid.UUID,
+        service_id: str,
+        *,
+        tail: int = 200,
+    ) -> str:
+        """Return the captured stdout/stderr tail of a long-running service."""
+        return await self._backend.service_logs(user_id, service_id, tail=tail)
+
+    async def service_status(self, user_id: uuid.UUID, service_id: str) -> ServiceStatus:
+        """Return the lifecycle status of a long-running service."""
+        return await self._backend.service_status(user_id, service_id)
+
+    async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
+        """Stop a long-running service (idempotent)."""
+        await self._backend.stop_service(user_id, service_id)
 
     async def destroy(self, user_id: uuid.UUID) -> None:
         """Destroy the user's Cabin (raises ``CabinError`` if none)."""

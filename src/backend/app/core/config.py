@@ -118,6 +118,18 @@ class Settings(BaseSettings):
     # Anthropic endpoint (e.g. "api.anthropic.com") for the claude_code token (C0).
     cabin_network_allow: list[str] = []
 
+    # Live App preview (Phase B0): run the crew's built app as a long-running process
+    # INSIDE the user's Cabin and capture a real reachable URL + logs (replaces the
+    # synthetic-URL stub in InProcessDeploymentBackend). `preview_default_command` is
+    # the start command used when a caller passes none — a GENERIC dev-server command;
+    # real per-app detection (npm start vs uvicorn vs …) is a future refinement. The
+    # process binds a localhost port (the Cabin's egress stays deny-by-default). A
+    # preview is reaped once older than `preview_max_lifetime_seconds` (hard cap, no
+    # orphan processes); `preview_idle_timeout_seconds` is available to the reaper.
+    preview_default_command: str = "npm start"
+    preview_max_lifetime_seconds: int = 1800  # 30 min hard cap
+    preview_idle_timeout_seconds: int = 900  # 15 min idle
+
     # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
     demo_mode: bool = False
 
