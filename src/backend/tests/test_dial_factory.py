@@ -131,6 +131,95 @@ class TestBuildRouterFromConfig:
         assert router is not None
 
 
+class TestClaudeCodePerRoleMaxTurns:
+    """Phase C1: per-role claude_code max_turns from the role mapping."""
+
+    def test_create_adapter_uses_role_max_turns(self) -> None:
+        adapter = create_adapter(
+            "claude_code",
+            "sonnet",
+            _make_settings(),
+            role_cfg={"provider": "claude_code", "model": "sonnet", "max_turns": 7},
+        )
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == 7
+
+    def test_create_adapter_falls_back_to_settings_when_no_role_cfg(self) -> None:
+        settings = _make_settings()
+        adapter = create_adapter("claude_code", "sonnet", settings)
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == settings.claude_code_max_turns
+
+    def test_create_adapter_falls_back_when_role_cfg_has_no_max_turns(self) -> None:
+        settings = _make_settings()
+        adapter = create_adapter(
+            "claude_code",
+            "sonnet",
+            settings,
+            role_cfg={"provider": "claude_code", "model": "sonnet"},
+        )
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == settings.claude_code_max_turns
+
+    def test_create_adapter_falls_back_when_role_max_turns_invalid(self) -> None:
+        settings = _make_settings()
+        adapter = create_adapter(
+            "claude_code",
+            "sonnet",
+            settings,
+            role_cfg={"provider": "claude_code", "model": "sonnet", "max_turns": 99},
+        )
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == settings.claude_code_max_turns
+
+    def test_build_router_threads_role_max_turns_into_adapter(self) -> None:
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={
+                "shipwright": {
+                    "provider": "claude_code",
+                    "model": "sonnet",
+                    "max_turns": 3,
+                },
+            },
+            fallback_chain=None,
+        )
+
+        router = build_router_from_config(config, _make_settings(), MagicMock(), MagicMock())
+
+        adapter = router._role_mapping[CrewRole.SHIPWRIGHT]
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == 3
+
+    def test_build_router_claude_code_without_max_turns_uses_settings(self) -> None:
+        settings = _make_settings()
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={
+                "shipwright": {"provider": "claude_code", "model": "sonnet"},
+            },
+            fallback_chain=None,
+        )
+
+        router = build_router_from_config(config, settings, MagicMock(), MagicMock())
+
+        adapter = router._role_mapping[CrewRole.SHIPWRIGHT]
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._max_turns == settings.claude_code_max_turns
+
+    def test_non_claude_code_role_cfg_ignored(self) -> None:
+        # A non-claude_code provider must be unaffected by a max_turns key.
+        adapter = create_adapter(
+            "anthropic",
+            "claude-sonnet-4-20250514",
+            _make_settings(),
+            role_cfg={"provider": "anthropic", "model": "x", "max_turns": 5},
+        )
+        assert isinstance(adapter, AnthropicAdapter)
+
+
 class TestResolveFallbackEntry:
     def test_object_form_uses_explicit_model(self) -> None:
         provider, model = _resolve_fallback_entry(
