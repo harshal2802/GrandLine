@@ -23,6 +23,7 @@ const TABS = [
   { href: "/app/sea-chart", label: "Sea Chart" },
   { href: "/app/crew-map", label: "Crew Map" },
   { href: "/app/ships-log", label: "Ship's Log" },
+  { href: "/app/preview", label: "Preview" },
 ];
 
 export function DeckShell({ children }: { children: React.ReactNode }) {
