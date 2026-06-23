@@ -475,6 +475,153 @@ class TestGetHeadSha:
             await service.get_head_sha(VOYAGE_ID, USER_ID, "$(whoami)")
 
 
+class TestListChangedFiles:
+    @pytest.mark.asyncio
+    async def test_parses_name_status(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(
+            stdout="A\tsrc/new.py\nM\tsrc/main.py\nD\tsrc/old.py\n"
+        )
+
+        files = await service.list_changed_files(VOYAGE_ID, USER_ID, "main", "feat/test")
+
+        assert len(files) == 3
+        assert files[0].status == "A"
+        assert files[0].path == "src/new.py"
+        assert files[1].status == "M"
+        assert files[2].status == "D"
+
+    @pytest.mark.asyncio
+    async def test_parses_rename_uses_new_path(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(
+            stdout="R100\tsrc/old_name.py\tsrc/new_name.py\n"
+        )
+
+        files = await service.list_changed_files(VOYAGE_ID, USER_ID, "main", "feat/test")
+
+        assert len(files) == 1
+        assert files[0].status == "R100"
+        assert files[0].path == "src/new_name.py"
+
+    @pytest.mark.asyncio
+    async def test_builds_three_dot_argv(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(stdout="")
+
+        await service.list_changed_files(VOYAGE_ID, USER_ID, "main", "feat/test")
+
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "git diff --name-status" in cmd
+        assert "main...feat/test" in cmd
+
+    @pytest.mark.asyncio
+    async def test_validates_refs(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.list_changed_files(VOYAGE_ID, USER_ID, "main", "$(rm -rf /)")
+
+
+class TestDiff:
+    @pytest.mark.asyncio
+    async def test_whole_branch(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(
+            stdout="diff --git a/x b/x\n+added\n-removed\n"
+        )
+
+        result = await service.diff(VOYAGE_ID, USER_ID, "main", "feat/test")
+
+        assert result.base == "main"
+        assert result.head == "feat/test"
+        assert result.path is None
+        assert "+added" in result.unified
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "git diff main...feat/test" in cmd
+        assert " -- " not in cmd
+
+    @pytest.mark.asyncio
+    async def test_single_file_adds_pathspec(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(stdout="diff…")
+
+        result = await service.diff(VOYAGE_ID, USER_ID, "main", "feat/test", path="src/main.py")
+
+        assert result.path == "src/main.py"
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "-- src/main.py" in cmd
+
+    @pytest.mark.asyncio
+    async def test_validates_refs(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.diff(VOYAGE_ID, USER_ID, "; whoami", "feat/test")
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_PATH"):
+            await service.diff(VOYAGE_ID, USER_ID, "main", "feat/test", path="../../etc/passwd")
+
+    @pytest.mark.asyncio
+    async def test_rejects_absolute_path(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_PATH"):
+            await service.diff(VOYAGE_ID, USER_ID, "main", "feat/test", path="/etc/passwd")
+
+
+class TestGetFileContent:
+    @pytest.mark.asyncio
+    async def test_returns_content(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(stdout="print('hello')\n")
+
+        result = await service.get_file_content(VOYAGE_ID, USER_ID, "feat/test", "src/main.py")
+
+        assert result.ref == "feat/test"
+        assert result.path == "src/main.py"
+        assert result.content == "print('hello')\n"
+        cmd = mock_backend.execute.call_args.args[1].command
+        assert "git show" in cmd
+        assert "feat/test:src/main.py" in cmd
+
+    @pytest.mark.asyncio
+    async def test_validates_ref(self, service: GitService, mock_backend: AsyncMock) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_BRANCH_NAME"):
+            await service.get_file_content(VOYAGE_ID, USER_ID, "$(id)", "src/main.py")
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        with pytest.raises(GitError, match="INVALID_PATH"):
+            await service.get_file_content(VOYAGE_ID, USER_ID, "main", "../../../etc/passwd")
+
+
 class TestInjectToken:
     def test_preserves_port(self) -> None:
         from app.services.git_service import _inject_token

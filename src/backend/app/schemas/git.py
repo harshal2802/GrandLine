@@ -81,3 +81,27 @@ class GitPRInfo(BaseModel):
 class GitConflictInfo(BaseModel):
     has_conflicts: bool
     conflicting_files: list[str] = Field(default_factory=list)
+
+
+class GitChangedFile(BaseModel):
+    """A single file changed between two refs, with its git status letter."""
+
+    path: str
+    status: str  # A / M / D / R… from `git diff --name-status`
+
+
+class GitDiff(BaseModel):
+    """A unified diff between two refs — whole-branch or scoped to one path."""
+
+    base: str
+    head: str
+    path: str | None = None
+    unified: str
+
+
+class GitFileContent(BaseModel):
+    """The full content of a file at a given ref (`git show ref:path`)."""
+
+    ref: str
+    path: str
+    content: str
