@@ -101,8 +101,18 @@ class GitService:
         return self._repos[voyage_id]
 
     async def clone_repo(
-        self, voyage_id: uuid.UUID, user_id: uuid.UUID, repo_url: str
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        repo_url: str,
+        token: str | None = None,
     ) -> GitRepoInfo:
+        """Clone the repo into a fresh per-voyage sandbox.
+
+        When ``token`` is provided (the caller's per-user GitHub token, Phase A3) it
+        replaces the env ``github_api_token`` in the clone URL. ``token=None``
+        preserves today's env-token behavior so the pipeline path is unchanged.
+        """
         if voyage_id in self._repos:
             raise GitError("REPO_ALREADY_CLONED")
 
@@ -113,8 +123,8 @@ class GitService:
         sandbox_id = await self._backend.create(user_id)
 
         try:
-            token = self._settings.github_api_token
-            auth_url = _inject_token(repo_url, token) if token else repo_url
+            auth_token = token if token is not None else self._settings.github_api_token
+            auth_url = _inject_token(repo_url, auth_token) if auth_token else repo_url
 
             await self._run(sandbox_id, f"git clone {shlex.quote(auth_url)} {REPO_PATH}")
             author_name = shlex.quote(self._settings.git_author_name)
@@ -187,7 +197,14 @@ class GitService:
         message: str,
         crew_member: str,
         files: dict[str, str] | None = None,
+        author_login: str | None = None,
     ) -> GitCommitInfo:
+        """Stage + commit changes.
+
+        When ``author_login`` is provided (the connected user's GitHub login, Phase
+        A3) the commit is authored as that identity; otherwise the crew member's
+        synthetic identity is used (today's behavior).
+        """
         sandbox_id = self._get_sandbox(voyage_id)
 
         if files:
@@ -201,7 +218,10 @@ class GitService:
                 ),
             )
 
-        author = f"{crew_member} <{crew_member}@grandline.dev>"
+        if author_login:
+            author = f"{author_login} <{author_login}@users.noreply.github.com>"
+        else:
+            author = f"{crew_member} <{crew_member}@grandline.dev>"
         await self._run(
             sandbox_id,
             f"cd {REPO_PATH} && git add -A"
@@ -221,17 +241,38 @@ class GitService:
             sha=sha,
             short_sha=short_sha,
             message=message,
-            author=crew_member,
+            author=author_login or crew_member,
             timestamp=timestamp,
         )
 
-    async def push(self, voyage_id: uuid.UUID, user_id: uuid.UUID, branch: str) -> GitPushInfo:
+    async def push(
+        self,
+        voyage_id: uuid.UUID,
+        user_id: uuid.UUID,
+        branch: str,
+        token: str | None = None,
+    ) -> GitPushInfo:
+        """Push a branch to ``origin``.
+
+        When ``token`` is provided (the caller's per-user GitHub token, Phase A3) the
+        push targets an explicitly-authenticated remote URL built from that token,
+        overriding whatever credential the clone baked into ``origin``. ``token=None``
+        pushes to ``origin`` as cloned (today's env-token behavior).
+        """
         _validate_branch_component(branch)
         sandbox_id = self._get_sandbox(voyage_id)
 
+        if token is not None:
+            repo_url = self._repo_urls.get(voyage_id)
+            if not repo_url:
+                raise GitError("REPO_NOT_CLONED")
+            push_target = shlex.quote(_inject_token(repo_url, token))
+        else:
+            push_target = "origin"
+
         await self._run(
             sandbox_id,
-            f"cd {REPO_PATH} && git push origin {shlex.quote(branch)}",
+            f"cd {REPO_PATH} && git push {push_target} {shlex.quote(branch)}",
         )
 
         return GitPushInfo(branch=branch, pushed=True)
@@ -244,19 +285,29 @@ class GitService:
         body: str,
         head: str,
         base: str,
+        token: str | None = None,
+        author_login: str | None = None,
     ) -> GitPRInfo:
+        """Open a pull request via the GitHub API.
+
+        When ``token`` is provided (the caller's per-user GitHub token, Phase A3) it
+        is used as the Bearer credential instead of the env ``github_api_token`` —
+        so the PR is opened AS that user. ``token=None`` preserves today's env-token
+        behavior. ``author_login`` is accepted for identity parity with ``commit``
+        (the PR author is the token's owner); it is not sent in the API payload.
+        """
         repo_url = self._repo_urls.get(voyage_id)
         if not repo_url:
             raise GitError("REPO_NOT_CLONED")
 
         owner_repo = _parse_owner_repo(repo_url)
-        token = self._settings.github_api_token
+        bearer = token if token is not None else self._settings.github_api_token
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"https://api.github.com/repos/{owner_repo}/pulls",
                 headers={
-                    "Authorization": f"Bearer {token}",
+                    "Authorization": f"Bearer {bearer}",
                     "Accept": "application/vnd.github+json",
                 },
                 json={

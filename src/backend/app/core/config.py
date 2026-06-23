@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # write-back contacts. ALWAYS this host — never one derived from a voyage's
     # untrusted `origin` payload. Env only; reuses `github_api_token` for auth.
     github_api_base_url: str = "https://api.github.com"
+    # Per-user GitHub (Phase A3): the GitHub OAuth App client_id used for the
+    # device-code flow that lets each user connect THEIR OWN GitHub account. The
+    # token lands in the Sea Chest (kind="github"); git ops then run with the
+    # user's token + identity when connected, else the env `github_api_token`.
+    # Env only (`GRANDLINE_GITHUB_OAUTH_CLIENT_ID`) — never user-supplied. Unset ==
+    # the device flow cannot start (clear error).
+    github_oauth_client_id: str = ""
 
     # Message in a Bottle (Phase 21): external triggers via signed webhook.
     # The shared secret GitHub signs webhook deliveries with (X-Hub-Signature-256).

@@ -634,3 +634,126 @@ class TestInjectToken:
 
         result = _inject_token("https://github.com/owner/repo.git", "tok123")
         assert result == "https://x-access-token:tok123@github.com/owner/repo.git"
+
+
+class TestPerUserTokenOverride:
+    """Phase A3: a provided per-user token overrides the env token; None preserves it."""
+
+    @pytest.mark.asyncio
+    async def test_clone_uses_per_user_token_when_provided(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL, token="gho_user_token")
+
+        clone_cmd = mock_backend.execute.call_args_list[0].args[1].command
+        # The user's token is injected into the clone URL — NOT the env token.
+        assert "gho_user_token" in clone_cmd
+        assert "ghp_test_token_123" not in clone_cmd
+        assert "x-access-token" in clone_cmd
+
+    @pytest.mark.asyncio
+    async def test_clone_falls_back_to_env_token_when_none(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)  # token defaults to None
+
+        clone_cmd = mock_backend.execute.call_args_list[0].args[1].command
+        assert "ghp_test_token_123" in clone_cmd
+
+    @pytest.mark.asyncio
+    async def test_push_uses_per_user_token_authenticated_remote(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+
+        await service.push(VOYAGE_ID, USER_ID, "feat/x", token="gho_user_token")
+
+        push_cmd = mock_backend.execute.call_args.args[1].command
+        assert "gho_user_token" in push_cmd
+        assert "x-access-token" in push_cmd
+
+    @pytest.mark.asyncio
+    async def test_push_falls_back_to_origin_when_none(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+
+        await service.push(VOYAGE_ID, USER_ID, "feat/x")
+
+        push_cmd = mock_backend.execute.call_args.args[1].command
+        assert "git push origin" in push_cmd
+        assert "x-access-token" not in push_cmd
+
+    @pytest.mark.asyncio
+    async def test_create_pr_uses_per_user_token_in_authorization(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            "number": 9,
+            "html_url": "https://github.com/owner/repo/pull/9",
+            "title": "t",
+            "head": {"ref": "feat/x"},
+            "base": {"ref": "main"},
+        }
+        with patch("app.services.git_service.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await service.create_pr(
+                VOYAGE_ID, USER_ID, "t", "", "feat/x", "main", token="gho_user_token"
+            )
+
+        headers = mock_client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer gho_user_token"
+
+    @pytest.mark.asyncio
+    async def test_create_pr_falls_back_to_env_token_when_none(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            "number": 9,
+            "html_url": "https://github.com/owner/repo/pull/9",
+            "title": "t",
+            "head": {"ref": "feat/x"},
+            "base": {"ref": "main"},
+        }
+        with patch("app.services.git_service.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await service.create_pr(VOYAGE_ID, USER_ID, "t", "", "feat/x", "main")
+
+        headers = mock_client.post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer ghp_test_token_123"
+
+    @pytest.mark.asyncio
+    async def test_commit_uses_author_login_identity(
+        self, service: GitService, mock_backend: AsyncMock
+    ) -> None:
+        await service.clone_repo(VOYAGE_ID, USER_ID, REPO_URL)
+        mock_backend.execute.reset_mock()
+        mock_backend.execute.return_value = _exec_result(
+            stdout="abc123 abc123d 2026-06-22T00:00:00+00:00"
+        )
+
+        result = await service.commit(VOYAGE_ID, USER_ID, "msg", "shipwright", author_login="luffy")
+
+        commit_cmd = " ".join(call.args[1].command for call in mock_backend.execute.call_args_list)
+        assert "luffy" in commit_cmd
+        assert result.author == "luffy"
