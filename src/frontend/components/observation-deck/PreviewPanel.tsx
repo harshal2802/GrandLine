@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVoyageStore } from "@/stores/voyage";
 import { usePreview, useStartPreview, useStopPreview } from "@/hooks/usePreview";
 import { usePreviewLogs } from "@/hooks/usePreviewLogs";
+import { TerminalPanel } from "./TerminalPanel";
+import type { PreviewInfo } from "@/lib/preview";
 
 // Phase B2 — the embedded preview surface. When no preview is running it shows a
 // "Start preview" button; when one is running it embeds the Cabin-run app in a
@@ -11,8 +13,11 @@ import { usePreviewLogs } from "@/hooks/usePreviewLogs";
 // "open in new tab" link, and a live logs pane (B1) with follow/pause. The app runs
 // INSIDE the user's gVisor Cabin — this view never sees a secret, only the URL +
 // app stdout/stderr. The active voyage comes from the store.
+type PreviewSection = "app" | "terminal";
+
 export function PreviewPanel() {
   const voyageId = useVoyageStore((s) => s.activeVoyageId);
+  const [section, setSection] = useState<PreviewSection>("app");
 
   const previewQuery = usePreview(voyageId);
   const startMutation = useStartPreview(voyageId);
@@ -44,16 +49,80 @@ export function PreviewPanel() {
             Run the crew&apos;s built app inside your Cabin and watch it live.
           </p>
         </div>
-        <PreviewControls
-          isRunning={isRunning}
-          isLoading={previewQuery.isLoading}
-          starting={startMutation.isPending}
-          stopping={stopMutation.isPending}
-          onStart={() => startMutation.mutate()}
-          onStop={() => stopMutation.mutate()}
-        />
+        {section === "app" && (
+          <PreviewControls
+            isRunning={isRunning}
+            isLoading={previewQuery.isLoading}
+            starting={startMutation.isPending}
+            stopping={stopMutation.isPending}
+            onStart={() => startMutation.mutate()}
+            onStop={() => stopMutation.mutate()}
+          />
+        )}
       </header>
 
+      <nav className="flex gap-1" aria-label="Preview sections">
+        {(["app", "terminal"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSection(s)}
+            aria-current={section === s ? "page" : undefined}
+            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+              section === s
+                ? "bg-ocean-700 text-ocean-50"
+                : "text-ocean-300 hover:bg-ocean-800"
+            }`}
+          >
+            {s === "app" ? "App" : "Terminal"}
+          </button>
+        ))}
+      </nav>
+
+      {section === "terminal" ? (
+        <TerminalPanel voyageId={voyageId} />
+      ) : (
+        <PreviewAppSection
+          previewQuery={previewQuery}
+          startMutation={startMutation}
+          isRunning={isRunning}
+          preview={preview}
+          lines={lines}
+          connection={connection}
+          follow={follow}
+          setFollow={setFollow}
+          clear={clear}
+        />
+      )}
+    </div>
+  );
+}
+
+interface PreviewAppSectionProps {
+  previewQuery: ReturnType<typeof usePreview>;
+  startMutation: ReturnType<typeof useStartPreview>;
+  isRunning: boolean;
+  preview: PreviewInfo | null;
+  lines: string[];
+  connection: string;
+  follow: boolean;
+  setFollow: (follow: boolean) => void;
+  clear: () => void;
+}
+
+function PreviewAppSection({
+  previewQuery,
+  startMutation,
+  isRunning,
+  preview,
+  lines,
+  connection,
+  follow,
+  setFollow,
+  clear,
+}: PreviewAppSectionProps) {
+  return (
+    <>
       {previewQuery.isError && (
         <div className="rounded-md border border-rose-700/50 bg-rose-900/20 px-3 py-2 text-sm text-rose-200">
           Could not load preview status. Try again.
@@ -87,7 +156,7 @@ export function PreviewPanel() {
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
 

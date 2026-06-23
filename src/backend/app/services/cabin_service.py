@@ -31,6 +31,7 @@ from app.cabin.backend import (
     CabinError,
     CabinRunResult,
     CabinStatus,
+    CabinTerminal,
     ServiceHandle,
     ServiceStatus,
 )
@@ -144,6 +145,27 @@ class CabinService:
     async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
         """Stop a long-running service (idempotent)."""
         await self._backend.stop_service(user_id, service_id)
+
+    async def open_terminal(
+        self,
+        user_id: uuid.UUID,
+        session: AsyncSession,
+        *,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> CabinTerminal:
+        """Ensure the user's Cabin, then open an interactive PTY inside it (Phase B3).
+
+        The returned :class:`CabinTerminal` is owner-scoped — it attaches to THIS user's
+        Cabin only. Arbitrary commands run, but ONLY inside the isolated gVisor Cabin
+        (kernel-filtered syscalls, deny-by-default egress, bounded by the Cabin's hard
+        max lifetime + idle reaper) — there is no host access, and no secret flows
+        through the handle's metadata.
+        """
+        await self.ensure(user_id, session)
+        terminal = await self._backend.open_terminal(user_id, cols=cols, rows=rows)
+        self._touch(user_id, refresh_only=True)
+        return terminal
 
     async def destroy(self, user_id: uuid.UUID) -> None:
         """Destroy the user's Cabin (raises ``CabinError`` if none)."""

@@ -93,6 +93,37 @@ class ServiceHandle(BaseModel):
     status: ServiceStatus = "starting"
 
 
+class CabinTerminal(ABC):
+    """An interactive PTY session bound to a user's Cabin (Phase B3).
+
+    A small async handle bridged over the bidirectional terminal WS. It carries NO
+    secret value — only the raw PTY byte stream (stdin/stdout) flows through it, and
+    those bytes are never logged. ``read`` yields PTY output (blocking until there is
+    some), ``write`` feeds stdin, ``resize`` adjusts the window, ``close`` tears the
+    session down (idempotent).
+    """
+
+    @abstractmethod
+    async def read(self) -> bytes:
+        """Return the next chunk of PTY output. Returns ``b""`` when the PTY is closed."""
+        ...
+
+    @abstractmethod
+    async def write(self, data: bytes) -> None:
+        """Write ``data`` to the PTY's stdin."""
+        ...
+
+    @abstractmethod
+    async def resize(self, cols: int, rows: int) -> None:
+        """Resize the PTY window (best-effort)."""
+        ...
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Tear down the PTY session (idempotent)."""
+        ...
+
+
 class CabinBackend(ABC):
     @abstractmethod
     async def ensure(
@@ -173,6 +204,24 @@ class CabinBackend(ABC):
     @abstractmethod
     async def stop_service(self, user_id: uuid.UUID, service_id: str) -> None:
         """Stop a long-running service (idempotent)."""
+        ...
+
+    @abstractmethod
+    async def open_terminal(
+        self,
+        user_id: uuid.UUID,
+        *,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> CabinTerminal:
+        """Open an interactive PTY session inside the user's Cabin (Phase B3).
+
+        Returns a :class:`CabinTerminal` bridged over the bidirectional terminal WS.
+        Arbitrary commands run, but ONLY inside the isolated gVisor Cabin (kernel
+        filtered syscalls, deny-by-default egress, bounded by the Cabin's hard max
+        lifetime + reaper) — there is no host access. Raises ``CabinError`` if the
+        user has no Cabin. No secret value flows through the handle's metadata.
+        """
         ...
 
     async def close(self) -> None:
