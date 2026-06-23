@@ -24,6 +24,7 @@ from app.models.voyage import Voyage
 from app.services.execution_service import ExecutionService
 from app.services.git_service import GitService
 from app.services.pipeline_service import PipelineService
+from app.services.sea_chest_service import SeaChestService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -128,7 +129,7 @@ def get_browser_backend(request: Request) -> BrowserCheckBackend:
 async def get_dial_router(
     voyage_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _voyage: Voyage = Depends(get_authorized_voyage),
+    voyage: Voyage = Depends(get_authorized_voyage),
     mushi: DenDenMushi = Depends(get_den_den_mushi),
     redis: Redis = Depends(get_redis),
 ) -> AsyncGenerator[DialSystemRouter, None]:
@@ -139,8 +140,21 @@ async def get_dial_router(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dial config not found for this voyage",
         )
+    # Per-user Claude Code token (Phase C0): if the voyage owner has connected
+    # Claude Code, reveal THEIR vaulted CLAUDE_CODE_OAUTH_TOKEN and thread it into
+    # every claude_code adapter so the CLI runs as the user. None (not connected)
+    # preserves today's host behavior — additive + fallback-safe.
+    claude_code_token = await SeaChestService(session, settings).reveal(
+        voyage.user_id, "claude_code"
+    )
     rate_limiter = RateLimiter(redis)
-    router = build_router_from_config(config, settings, mushi, rate_limiter)
+    router = build_router_from_config(
+        config,
+        settings,
+        mushi,
+        rate_limiter,
+        claude_code_oauth_token=claude_code_token,
+    )
     try:
         yield router
     finally:

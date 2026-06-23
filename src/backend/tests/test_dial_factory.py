@@ -293,3 +293,58 @@ class TestCrossVendorFailoverModel:
         fallback = router._fallback_chains[CrewRole.CAPTAIN][0]
         assert isinstance(fallback, OpenAIAdapter)
         assert fallback._model == "gpt-4o"
+
+
+class TestPerUserClaudeCodeToken:
+    """Phase C0: thread a per-user CLAUDE_CODE_OAUTH_TOKEN into claude_code adapters."""
+
+    def test_create_adapter_passes_oauth_token(self) -> None:
+        adapter = create_adapter(
+            "claude_code", "sonnet", _make_settings(), oauth_token="sk-ant-user"
+        )
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._oauth_token == "sk-ant-user"
+
+    def test_create_adapter_default_oauth_token_none(self) -> None:
+        adapter = create_adapter("claude_code", "sonnet", _make_settings())
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._oauth_token is None
+
+    def test_build_router_threads_token_into_claude_code_role(self) -> None:
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={
+                "shipwright": {"provider": "claude_code", "model": "sonnet"},
+                "captain": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+            },
+            fallback_chain={"shipwright": [{"provider": "claude_code", "model": "sonnet"}]},
+        )
+        router = build_router_from_config(
+            config,
+            _make_settings(),
+            MagicMock(),
+            MagicMock(),
+            claude_code_oauth_token="sk-ant-user",
+        )
+        primary = router._role_mapping[CrewRole.SHIPWRIGHT]
+        assert isinstance(primary, ClaudeCodeAdapter)
+        assert primary._oauth_token == "sk-ant-user"
+        # Non claude_code roles are never given the token.
+        assert not isinstance(router._role_mapping[CrewRole.CAPTAIN], ClaudeCodeAdapter)
+        # The claude_code fallback also runs as the user.
+        fb = router._fallback_chains[CrewRole.SHIPWRIGHT][0]
+        assert isinstance(fb, ClaudeCodeAdapter)
+        assert fb._oauth_token == "sk-ant-user"
+
+    def test_build_router_without_token_leaves_host_behavior(self) -> None:
+        config = DialConfig(
+            id=uuid.uuid4(),
+            voyage_id=VOYAGE_ID,
+            role_mapping={"shipwright": {"provider": "claude_code", "model": "sonnet"}},
+            fallback_chain=None,
+        )
+        router = build_router_from_config(config, _make_settings(), MagicMock(), MagicMock())
+        adapter = router._role_mapping[CrewRole.SHIPWRIGHT]
+        assert isinstance(adapter, ClaudeCodeAdapter)
+        assert adapter._oauth_token is None

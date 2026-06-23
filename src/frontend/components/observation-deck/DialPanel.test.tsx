@@ -32,6 +32,13 @@ vi.mock("@/lib/seaChest", async (importOriginal) => {
   };
 });
 
+const startClaudeLogin = vi.fn();
+const pollClaudeLogin = vi.fn();
+vi.mock("@/lib/integrations", () => ({
+  startClaudeLogin: (...a: unknown[]) => startClaudeLogin(...a),
+  pollClaudeLogin: (...a: unknown[]) => pollClaudeLogin(...a),
+}));
+
 function dialConfig(over: Partial<DialConfig> = {}): DialConfig {
   return {
     id: "dc1",
@@ -91,6 +98,8 @@ beforeEach(() => {
     credStatus({ kind: "github", connected: false, label: null }),
   ]);
   disconnectCredential.mockResolvedValue(undefined);
+  startClaudeLogin.mockReset();
+  pollClaudeLogin.mockReset();
 });
 
 afterEach(() => {
@@ -211,12 +220,90 @@ describe("DialPanel — Sea Chest connection status (C2)", () => {
     await waitFor(() => expect(disconnectCredential).toHaveBeenCalledWith("claude_code"));
   });
 
-  it("shows a disabled 'coming soon' Connect affordance for a not-connected kind", async () => {
+  it("shows a disabled 'coming soon' Connect affordance for GitHub (A3 UI separate)", async () => {
     renderPanel();
     await waitFor(() => expect(screen.getByText(/Not connected/i)).toBeInTheDocument());
 
+    // GitHub is the not-connected kind that stays "coming soon".
     const connect = screen.getByRole("button", { name: "Connect" });
     expect(connect).toBeDisabled();
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+  });
+});
+
+describe("DialPanel — Claude Code Connect flow (C0)", () => {
+  it("start → shows the verification URL/code while awaiting approval", async () => {
+    // claude_code starts NOT connected so the real Connect flow renders.
+    getSeaChest.mockResolvedValue([
+      credStatus({ kind: "claude_code", connected: false, label: null }),
+      credStatus({ kind: "github", connected: false, label: null }),
+    ]);
+    startClaudeLogin.mockResolvedValue({
+      verification_uri: "https://claude.ai/device",
+      user_code: "WXYZ-1234",
+      login_id: "lid-1",
+    });
+    // Stay pending so the awaiting UI (URL + code) is observable.
+    pollClaudeLogin.mockResolvedValue({ status: "pending", label: null, error: null });
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("Claude Code")).toBeInTheDocument());
+
+    // Two "Connect" buttons now (claude_code real + github coming-soon); click the
+    // enabled claude_code one.
+    const connectButtons = screen.getAllByRole("button", { name: "Connect" });
+    const claudeConnect = connectButtons.find((b) => !(b as HTMLButtonElement).disabled)!;
+    fireEvent.click(claudeConnect);
+
+    await waitFor(() => expect(startClaudeLogin).toHaveBeenCalled());
+    // The verification URL + code are shown for the user to approve.
+    await waitFor(() =>
+      expect(screen.getByText("https://claude.ai/device")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/WXYZ-1234/)).toBeInTheDocument();
+    // The hook is polling the started login.
+    await waitFor(() => expect(pollClaudeLogin).toHaveBeenCalledWith("lid-1"));
+  });
+
+  it("flips to Connected once the poll reports connected", async () => {
+    getSeaChest.mockResolvedValue([
+      credStatus({ kind: "claude_code", connected: false, label: null }),
+      credStatus({ kind: "github", connected: false, label: null }),
+    ]);
+    startClaudeLogin.mockResolvedValue({
+      verification_uri: "https://claude.ai/device",
+      user_code: null,
+      login_id: "lid-1",
+    });
+    pollClaudeLogin.mockResolvedValue({ status: "connected", label: "claude-login", error: null });
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("Claude Code")).toBeInTheDocument());
+
+    const connectButtons = screen.getAllByRole("button", { name: "Connect" });
+    const claudeConnect = connectButtons.find((b) => !(b as HTMLButtonElement).disabled)!;
+    fireEvent.click(claudeConnect);
+
+    await waitFor(() => expect(screen.getByText(/Done/)).toBeInTheDocument());
+  });
+
+  it("surfaces a start error with a Retry affordance", async () => {
+    getSeaChest.mockResolvedValue([
+      credStatus({ kind: "claude_code", connected: false, label: null }),
+      credStatus({ kind: "github", connected: false, label: null }),
+    ]);
+    startClaudeLogin.mockRejectedValue(new Error("Cabin runtime is not available"));
+
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("Claude Code")).toBeInTheDocument());
+
+    const connectButtons = screen.getAllByRole("button", { name: "Connect" });
+    const claudeConnect = connectButtons.find((b) => !(b as HTMLButtonElement).disabled)!;
+    fireEvent.click(claudeConnect);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Cabin runtime is not available/)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

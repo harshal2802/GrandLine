@@ -20,6 +20,7 @@ import {
   type SeaChestKind,
 } from "@/lib/seaChest";
 import { useSeaChest } from "@/hooks/useSeaChest";
+import { useClaudeLogin } from "@/hooks/useClaudeLogin";
 
 // A fallback entry, always normalized to the object form for editing.
 type FallbackObj = { provider: string; model?: string };
@@ -322,9 +323,10 @@ export function DialPanel({ voyageId }: { voyageId: string }) {
 }
 
 // Sea Chest connection status (Phase 0a, surfaced in C2). Shows whether the user has
-// connected each credential kind and lets them disconnect. The connect flows themselves
-// — device-code `claude login` (C0) and GitHub OAuth (A3) — are later phases, so Connect
-// is a disabled "coming soon" affordance. The API NEVER returns a secret.
+// connected each credential kind and lets them disconnect. The `claude_code` Connect is
+// now REAL (Phase C0): it runs the device-login inside the user's Cabin, shows the
+// verification URL/code, and polls until connected. GitHub OAuth (A3 UI) stays a disabled
+// "coming soon" affordance. The API NEVER returns a secret/token.
 function SeaChestSection() {
   const queryClient = useQueryClient();
   const query = useSeaChest();
@@ -410,6 +412,8 @@ function CredentialStatusRow({
             {disconnecting ? "Disconnecting…" : "Disconnect"}
           </button>
         </>
+      ) : kind === "claude_code" ? (
+        <ClaudeConnect />
       ) : (
         <>
           <span className="rounded bg-ocean-800 px-1.5 py-0.5 text-ocean-400">
@@ -428,6 +432,83 @@ function CredentialStatusRow({
         </>
       )}
     </div>
+  );
+}
+
+// The REAL Claude Code connect flow (Phase C0): Connect → start the device-login in the
+// Cabin → show the verification URL/code → poll until connected (then ["sea-chest"] is
+// invalidated by the hook, flipping the row to Connected). No token ever reaches the UI.
+function ClaudeConnect() {
+  const { phase, start, error, begin, reset } = useClaudeLogin();
+
+  if (phase === "idle" || phase === "error") {
+    return (
+      <>
+        <span className="rounded bg-ocean-800 px-1.5 py-0.5 text-ocean-400">Not connected</span>
+        <span className="ml-auto flex items-center gap-1">
+          {phase === "error" && (
+            <span className="text-[11px] text-rose-400">{error ?? "Login failed"}</span>
+          )}
+          <button
+            type="button"
+            onClick={begin}
+            className="rounded border border-ocean-700 px-2 py-0.5 text-ocean-200 hover:border-ocean-400 hover:text-ocean-100"
+          >
+            {phase === "error" ? "Retry" : "Connect"}
+          </button>
+        </span>
+      </>
+    );
+  }
+
+  if (phase === "starting") {
+    return (
+      <>
+        <span className="rounded bg-ocean-800 px-1.5 py-0.5 text-ocean-400">Not connected</span>
+        <span className="ml-auto text-[11px] text-ocean-400">Starting login…</span>
+      </>
+    );
+  }
+
+  if (phase === "connected") {
+    return (
+      <>
+        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">Connected</span>
+        <span className="ml-auto text-[11px] text-emerald-300">Done ✓</span>
+      </>
+    );
+  }
+
+  // phase === "awaiting": show the verification URL/code and a Cancel.
+  return (
+    <span className="ml-auto flex flex-col items-end gap-0.5 text-[11px]">
+      <span className="text-ocean-300">Open to approve:</span>
+      {start && (
+        <a
+          href={start.verification_uri}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sky-300 underline hover:text-sky-200"
+        >
+          {start.verification_uri}
+        </a>
+      )}
+      {start?.user_code && (
+        <span className="text-ocean-200">
+          code: <span className="font-mono">{start.user_code}</span>
+        </span>
+      )}
+      <span className="flex items-center gap-1 text-ocean-500">
+        <span>Waiting for approval…</span>
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded border border-ocean-700 px-1.5 py-0.5 text-ocean-300 hover:border-rose-400 hover:text-rose-300"
+        >
+          Cancel
+        </button>
+      </span>
+    </span>
   );
 }
 

@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     claude_code_max_turns: int = 1
     claude_code_workspace: str = ""  # cwd for the CLI; empty = system temp dir
     claude_code_extra_args: str = ""  # extra CLI flags, shlex-split
+    # Per-user Claude Code (Phase C0): the command ClaudeAuthService runs INSIDE the
+    # user's Cabin to begin the device-login / token-capture flow. The CLI prints a
+    # verification URL the user approves out-of-band; the captured
+    # CLAUDE_CODE_OAUTH_TOKEN is then vaulted in the Sea Chest (kind="claude_code")
+    # and the adapter runs as the user. Configurable so deployments can pin the exact
+    # `claude setup-token`-style invocation. Env `GRANDLINE_CLAUDE_CODE_LOGIN_COMMAND`.
+    claude_code_login_command: str = "claude setup-token"
 
     # Vivre Card (State Checkpointing)
     vivre_card_checkpoint_interval_seconds: int = 300  # 5 minutes
