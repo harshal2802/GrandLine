@@ -14,6 +14,9 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "connect-src 'self' http://localhost:8000 ws://localhost:8000 https: wss:",
+  // The embedded preview (Phase B2) iframes the crew's app, which the Cabin runs
+  // on a localhost port. Allow that origin (and https for deployed previews).
+  "frame-src 'self' http://localhost:* http://127.0.0.1:* https:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
