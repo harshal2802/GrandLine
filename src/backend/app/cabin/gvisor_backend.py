@@ -36,6 +36,7 @@ from app.cabin.backend import (
     CabinInfo,
     CabinRunResult,
     CabinStatus,
+    CabinTerminal,
     ServiceHandle,
     ServiceStatus,
 )
@@ -82,6 +83,57 @@ def _secret_env(secrets: dict[str, str]) -> dict[str, str]:
         if var is not None:
             env[var] = value
     return env
+
+
+class _GVisorCabinTerminal(CabinTerminal):
+    """A real PTY (Phase B3) wrapping an ``aiodocker`` exec with ``Tty=True`` + stdin.
+
+    The exec runs inside the persistent per-user Cabin, so arbitrary commands are
+    kernel-filtered by runsc, bounded by deny-by-default egress + CPU/mem quotas and the
+    Cabin's hard max lifetime + reaper — there is no host access. The raw PTY byte
+    stream flows through ``read``/``write`` verbatim and is NEVER logged.
+    """
+
+    def __init__(self, exec_obj: Any, stream: Any) -> None:
+        self._exec = exec_obj
+        self._stream = stream
+        self._closed = False
+
+    async def read(self) -> bytes:
+        if self._closed:
+            return b""
+        try:
+            msg = await self._stream.read_out()
+        except Exception:  # pragma: no cover - stream closed underfoot
+            return b""
+        if msg is None:
+            return b""
+        # In a TTY exec stdout + stderr are merged onto the same stream; pass bytes
+        # through verbatim (never logged).
+        return bytes(msg.data)
+
+    async def write(self, data: bytes) -> None:
+        if self._closed:
+            return
+        await self._stream.write_in(data)
+
+    async def resize(self, cols: int, rows: int) -> None:
+        if self._closed:
+            return
+        # Best-effort PTY resize; aiodocker exposes resize on the exec handle.
+        try:
+            await self._exec.resize(w=cols, h=rows)
+        except Exception:  # pragma: no cover - resize is advisory
+            logger.debug("Terminal resize to %sx%s failed", cols, rows)
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._stream.close()
+        except Exception:  # pragma: no cover - best effort
+            logger.debug("Terminal stream already closed")
 
 
 class GVisorCabinBackend(CabinBackend):
@@ -392,6 +444,43 @@ class GVisorCabinBackend(CabinBackend):
             await exec_obj.start(detach=True)
         except DockerError:
             logger.debug("Preview service %s already stopped", service_id)
+
+    async def open_terminal(
+        self,
+        user_id: uuid.UUID,
+        *,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> CabinTerminal:
+        client = self._client()
+        from aiodocker.exceptions import DockerError  # lazy
+
+        cabin_id = self._cabins.get(user_id)
+        if cabin_id is None:
+            raise CabinError("NOT_FOUND", "No cabin for user")
+
+        try:
+            container = client.containers.container(cabin_id)
+            # Interactive login shell with a PTY + stdin attached. The shell runs
+            # INSIDE the gVisor Cabin — kernel-filtered, deny-by-default egress,
+            # bounded by the Cabin's lifetime. No host access.
+            exec_obj = await container.exec(
+                cmd=["/bin/sh", "-i"],
+                tty=True,
+                stdin=True,
+                stdout=True,
+                stderr=True,
+            )
+            stream = exec_obj.start(detach=False)
+            await stream._init()  # noqa: SLF001 - open the multiplexed exec stream
+        except DockerError as exc:
+            # Generic message — the command/env (which may carry a secret) is never
+            # placed in the error.
+            raise CabinError("TERMINAL_FAILED", "Failed to open cabin terminal") from exc
+
+        terminal = _GVisorCabinTerminal(exec_obj, stream)
+        await terminal.resize(cols, rows)
+        return terminal
 
     async def close(self) -> None:
         if self._docker is not None:

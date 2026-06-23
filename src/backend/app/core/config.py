@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     preview_max_lifetime_seconds: int = 1800  # 30 min hard cap
     preview_idle_timeout_seconds: int = 900  # 15 min idle
 
+    # Live App interactive terminal (Phase B3): a real PTY into the user's Cabin over a
+    # bidirectional WS (`/api/v1/voyages/{id}/terminal`), shown via xterm.js. The shell
+    # runs INSIDE the isolated gVisor Cabin (kernel-filtered syscalls, deny-by-default
+    # egress, bounded by the Cabin's hard max lifetime + reaper) — no host access. The
+    # PTY session is torn down on disconnect, Cabin destroy, error, or once idle past
+    # `terminal_idle_timeout_seconds` (no orphan exec streams). `terminal_enabled`
+    # gates the feature.
+    terminal_enabled: bool = True
+    terminal_idle_timeout_seconds: int = 600  # 10 min idle
+
     # Demo mode (#56): a scripted voyage replayable via `make demo`, no API key.
     demo_mode: bool = False
 

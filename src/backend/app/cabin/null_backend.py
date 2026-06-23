@@ -12,6 +12,7 @@ module stores, echoes, or logs a secret value.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -21,6 +22,7 @@ from app.cabin.backend import (
     CabinInfo,
     CabinRunResult,
     CabinStatus,
+    CabinTerminal,
     ServiceHandle,
     ServiceStatus,
 )
@@ -57,6 +59,48 @@ class _NullService:
         self.service_id = service_id
         self.port = port
         self.status: ServiceStatus = "running"
+
+
+class _NullCabinTerminal(CabinTerminal):
+    """Deterministic, container-free PTY (Phase B3) — echoes input + a canned prompt.
+
+    Backed by an :class:`asyncio.Queue` so ``read`` blocks until output is available,
+    exactly like a real PTY. Each ``write`` is echoed straight back as output, which
+    is enough to exercise the full bidirectional WS bridge with NO container. No secret
+    value is stored or echoed (the bytes are the caller's own input).
+    """
+
+    _PROMPT = b"grandline-cabin:~$ "
+
+    def __init__(self, cols: int = 80, rows: int = 24) -> None:
+        self.cols = cols
+        self.rows = rows
+        self._queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._closed = False
+        # Emit a canned prompt on open so the client sees the shell immediately.
+        self._queue.put_nowait(self._PROMPT)
+
+    async def read(self) -> bytes:
+        if self._closed and self._queue.empty():
+            return b""
+        return await self._queue.get()
+
+    async def write(self, data: bytes) -> None:
+        if self._closed:
+            return
+        # Echo the input back as PTY output (deterministic, no secret materialized).
+        self._queue.put_nowait(data)
+
+    async def resize(self, cols: int, rows: int) -> None:
+        self.cols = cols
+        self.rows = rows
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        # Unblock any pending read() with a sentinel empty chunk.
+        self._queue.put_nowait(b"")
 
 
 class NullCabinBackend(CabinBackend):
@@ -188,3 +232,16 @@ class NullCabinBackend(CabinBackend):
         service = cabin.services.get(service_id)
         if service is not None:
             service.status = "stopped"
+
+    async def open_terminal(
+        self,
+        user_id: uuid.UUID,
+        *,
+        cols: int = 80,
+        rows: int = 24,
+    ) -> CabinTerminal:
+        cabin = self._cabins.get(user_id)
+        if cabin is None:
+            raise CabinError("NOT_FOUND", "No cabin for user")
+        cabin.last_active = datetime.now(UTC)
+        return _NullCabinTerminal(cols=cols, rows=rows)

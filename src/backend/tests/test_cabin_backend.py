@@ -186,3 +186,64 @@ class TestGVisorServiceMissingLib:
             with pytest.raises(CabinError) as exc:
                 await backend.start_service(USER_ID, "npm start", port=3000)
         assert exc.value.code == "BACKEND_UNAVAILABLE"
+
+
+class TestNullBackendTerminal:
+    """B3: interactive PTY support — deterministic in-memory echo terminal."""
+
+    async def test_open_terminal_emits_canned_prompt(self) -> None:
+        backend = NullCabinBackend()
+        await backend.ensure(USER_ID, secrets={}, network_allow=[])
+        terminal = await backend.open_terminal(USER_ID, cols=120, rows=40)
+        # The first read yields the canned shell prompt so the client sees a shell.
+        prompt = await terminal.read()
+        assert isinstance(prompt, bytes)
+        assert prompt  # non-empty, deterministic
+        await terminal.close()
+
+    async def test_open_terminal_echoes_input(self) -> None:
+        backend = NullCabinBackend()
+        await backend.ensure(USER_ID, secrets={}, network_allow=[])
+        terminal = await backend.open_terminal(USER_ID)
+        await terminal.read()  # drain the prompt
+        await terminal.write(b"ls -la\n")
+        echoed = await terminal.read()
+        assert echoed == b"ls -la\n"
+        await terminal.close()
+
+    async def test_resize_is_accepted(self) -> None:
+        backend = NullCabinBackend()
+        await backend.ensure(USER_ID, secrets={}, network_allow=[])
+        terminal = await backend.open_terminal(USER_ID)
+        await terminal.resize(200, 50)  # must not raise
+        await terminal.close()
+
+    async def test_read_after_close_returns_empty(self) -> None:
+        backend = NullCabinBackend()
+        await backend.ensure(USER_ID, secrets={}, network_allow=[])
+        terminal = await backend.open_terminal(USER_ID)
+        await terminal.read()  # drain the prompt
+        await terminal.close()
+        assert await terminal.read() == b""
+
+    async def test_open_terminal_without_cabin_raises(self) -> None:
+        backend = NullCabinBackend()
+        with pytest.raises(CabinError):
+            await backend.open_terminal(OTHER_USER)
+
+
+class TestGVisorTerminalMissingLib:
+    async def test_open_terminal_raises_clean_error_when_aiodocker_absent(self) -> None:
+        backend = GVisorCabinBackend(SimpleNamespace())
+
+        real_import = builtins.__import__
+
+        def _fake_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "aiodocker" or name.startswith("aiodocker."):
+                raise ImportError("No module named 'aiodocker'")
+            return real_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", _fake_import):
+            with pytest.raises(CabinError) as exc:
+                await backend.open_terminal(USER_ID)
+        assert exc.value.code == "BACKEND_UNAVAILABLE"

@@ -20,6 +20,7 @@ from app.api.v1.return_bottle import router as return_bottle_router
 from app.api.v1.sea_chest import router as sea_chest_router
 from app.api.v1.shipwright import router as shipwright_router
 from app.api.v1.standing_orders import router as standing_orders_router
+from app.api.v1.terminal import router as terminal_router
 from app.api.v1.triggers import router as triggers_router
 from app.api.v1.vivre_cards import router as vivre_cards_router
 from app.api.v1.voyages import router as voyages_router
@@ -43,6 +44,7 @@ v1_router.include_router(return_bottle_router)
 v1_router.include_router(observation_deck_router)
 v1_router.include_router(log_book_router)
 v1_router.include_router(standing_orders_router)
+v1_router.include_router(terminal_router)
 v1_router.include_router(sea_chest_router)
 v1_router.include_router(triggers_router)
 v1_router.include_router(bedside_browser_router)
